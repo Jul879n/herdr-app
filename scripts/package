@@ -54,7 +54,13 @@ for notice in LICENSE THIRD-PARTY-NOTICES; do
   [[ -s $notice ]] || { echo "package: $notice is missing or empty" >&2; exit 1; }
 done
 # Only release builds update themselves (src/update.rs).
-HERDR_APP_RELEASE=1 cargo build --release --locked ${triple:+--target "$triple"}
+# PACKAGE_FORK=1 builds without the flag, so the fork's build has no upstream
+# telemetry/feedback endpoints (option_env! treats an empty var as set, hence env -u).
+if [[ ${PACKAGE_FORK:-} == 1 ]]; then
+  env -u HERDR_APP_RELEASE cargo build --release --locked ${triple:+--target "$triple"}
+else
+  HERDR_APP_RELEASE=1 cargo build --release --locked ${triple:+--target "$triple"}
+fi
 
 if [[ $os == linux ]]; then export TMPDIR=${TMPDIR:-/var/tmp}; fi
 work=$(mktemp -d)

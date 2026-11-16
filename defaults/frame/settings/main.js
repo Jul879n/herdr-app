@@ -2,12 +2,13 @@
 
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, InputState, Input, Popup } from "gpui-base";
-import { hc, run, keys, knownAgents, pickFolder, checking, theme, themes, fonts, updates, telemetry, settings, layouts, shared, appHome, readTextFile, writeTextFile, playSound, props, closeOverlay, notify, window, tr } from "herdr";
+import { hc, run, layout, keys, knownAgents, pickFolder, checking, theme, themes, fonts, updates, exec, telemetry, settings, layouts, shared, appHome, readTextFile, writeTextFile, playSound, props, closeOverlay, notify, window, tr } from "herdr";
 
 const I = (name) => `frame/settings/${name}.svg`;
 
 const SECTIONS = [
   { id: "look", title: "settings.look", icon: "palette" },
+  { id: "layout", title: "settings.layout", icon: "layout" },
   { id: "general", title: "settings.general", icon: "settings" },
   { id: "agents", title: "settings.agents", icon: "terminal" },
   { id: "keyboard", title: "settings.keyboard", icon: "keyboard" },
@@ -16,6 +17,15 @@ const SECTIONS = [
   { id: "updates", title: "settings.updates", icon: "refresh" },
   { id: "privacy", title: "settings.privacy", icon: "shield" },
 ];
+
+// What Herdr's own layout blocks are called to a person; other layouts show their title or id.
+const LAYOUT_NAMES = {
+  sidebar: "settings.layout_sidebar", brand: "settings.layout_brand", "sidebar-lists": "settings.layout_lists", spaces: "settings.layout_spaces",
+  agents: "settings.layout_agents", "sidebar-footer": "settings.layout_footer", work: "settings.layout_work", tabs: "settings.layout_tabs",
+  "work-body": "settings.layout_body", main: "settings.layout_terminals", panel: "settings.layout_panel", status: "settings.layout_status",
+};
+
+const SHIPPED_LAYOUTS = ["main", "terminals", "win98"];
 
 const LOOKS = { main: "Herdr", terminals: "settings.terminals", win98: "Herdr 98" };
 const APPEARANCES = [
@@ -607,6 +617,43 @@ export default class Settings extends View {
       .child(fontRow("ui_font", null, tr("settings.interface_font"), s.ui_font_family, DEFAULT_UI_FONT));
   }
 
+  // Layout -------------------------------------------------------------------
+
+  // Every block of the shown layout, grouped by the row or column it sits in:
+  // move one earlier or later in its group, hide or show it.
+  design(t) {
+    const root = layout();
+    const named = (n) => (LAYOUT_NAMES[n.id] ? tr(LAYOUT_NAMES[n.id]) : n.title ?? n.id);
+    const icon = (id, name, onClick) => div().id(id).cursor_pointer().p(5).rounded(5).hover((s) => s.bg(t.hover)).on_click(onClick).child(svg(name).size(14).text_color(t.muted));
+    const group = (node, top) => {
+      if (!node.children || node.type === "stack") return [];
+      const kids = node.children;
+      const row = node.type === "row";
+      const own = kids.length > 1 || top || kids.some((k) => k.hidden)
+        ? [
+            div().pt(top ? 0 : 14).pb(4).text_size(12).font_semibold().text_color(t.dim).child(top ? tr("settings.layout_window") : named(node)),
+            ...kids.map((k, i) => h_flex().id(`st-ly-${k.id}`).w_full().gap(8).py(4).items_center()
+              .child(div().flex_1().min_w(0).truncate().text_size(13).text_color(k.hidden ? t.dim : t.foreground).child(named(k)))
+              .when(i > 0, (el) => el.child(icon(`st-ly-b-${k.id}`, row ? "frame/settings/chevron-left.svg" : "frame/settings/chevron-up.svg", () => run("layout.move", { id: k.id, before: kids[i - 1].id }))))
+              .when(i === 0, (el) => el.child(div().w(24)))
+              .when(i < kids.length - 1, (el) => el.child(icon(`st-ly-a-${k.id}`, row ? "frame/settings/chevron-right.svg" : "frame/settings/chevron-down.svg", () => run("layout.move", { id: k.id, after: kids[i + 1].id }))))
+              .when(i === kids.length - 1, (el) => el.child(div().w(24)))
+              .child(k.id === "main" && !k.hidden ? div().w(36) : this.toggle(t, `st-ly-t-${k.id}`, !k.hidden, () => run("layout.toggle", { id: k.id })))),
+          ]
+        : [];
+      return [...own, ...kids.filter((k) => !k.hidden).flatMap((k) => group(k, false))];
+    };
+    const base = String(shared("layout") ?? "").replace(/^my-/, "");
+    const mine = String(shared("layout") ?? "").startsWith("my-") && SHIPPED_LAYOUTS.includes(base);
+    return v_flex()
+      .w_full()
+      .child(this.heading(t, tr("settings.layout")))
+      .child(div().pb(12).text_size(12.5).line_height("18px").text_color(t.dim).child(tr("settings.layout_note")))
+      .child(div().pb(14).child(this.button(t, "st-ly-drag", tr("settings.layout_drag"), () => { run("overlay.close"); run("layout.edit"); })))
+      .children(group(root, true))
+      .when(mine, (el) => el.child(div().pt(18).child(this.button(t, "st-ly-back", tr("settings.layout_back"), () => run("layout.switch", { name: base })))));
+  }
+
   // General ----------------------------------------------------------------
 
   general(t) {
@@ -999,12 +1046,24 @@ export default class Settings extends View {
             : u.checks
               ? [result, check("st-check-core")]
               : [tr("settings.not_checked_a_build_from"), null];
+    const f = u.fork;
+    const forkText = !f ? "" : f.error
+      ? tr("settings.fork_error", { error: f.error })
+      : f.newer
+        ? tr("settings.fork_new", { version: f.latest })
+        : f.latest
+          ? tr("settings.fork_current", { version: f.latest })
+          : tr("settings.fork_none");
+    const forkOpen = f?.newer && f.url
+      ? this.button(t, "st-fork-open", tr("settings.fork_open"), () => exec(window()?.platform === "macos" ? "open" : "xdg-open", [f.url]).catch(() => null))
+      : null;
     return v_flex()
       .w_full()
       .child(this.heading(t, "Herdr"))
       .child(this.row(t, `Herdr ${u.app.version}`, app[0], h_flex().gap(8).flex_none()
         .child(this.button(t, "st-whats-new", tr("settings.what_s_new"), () => { closeOverlay(props()?.overlay); run("app.whats_new"); }))
         .when(Boolean(app[1]), (el) => el.child(app[1]))))
+      .when(Boolean(f), (el) => el.child(this.row(t, tr("settings.fork_release"), forkText, forkOpen ?? div())))
       .child(div().h(18))
       .child(this.heading(t, "herdr-core"))
       .child(this.row(t, `herdr-core ${c.version ?? ""}`, core[0], core[1] ?? div()))
@@ -1082,7 +1141,7 @@ export default class Settings extends View {
   render(cx) {
     const t = theme();
     const u = updates();
-    const waiting = Boolean(u.app.ready || (u.core.ready && !u.core.managed));
+    const waiting = Boolean(u.app.ready || (u.core.ready && !u.core.managed) || u.fork?.newer);
     const nav = v_flex()
       .flex_none()
       .w(190)
@@ -1177,6 +1236,8 @@ export default class Settings extends View {
                   .child(
                     this.section === "look"
                       ? this.look(t, cx)
+                      : this.section === "layout"
+                        ? this.design(t)
                       : this.section === "general"
                         ? this.general(t)
                       : this.section === "agents"

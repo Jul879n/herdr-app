@@ -342,6 +342,8 @@ export function updates(): {
   checked: number | null;
   checks: boolean;
   checking: boolean;
+  /** Fork releases: null in official builds. `latest`: null with no `error` means no releases yet. */
+  fork?: { repo: string; latest: string | null; url: string | null; newer: boolean; notes: string | null; error: string | null } | null;
 };
 
 /** Record only spotlight versions actually shown expanded, never collapsed headlines. */

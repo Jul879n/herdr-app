@@ -7,6 +7,7 @@
 use crate::hc::Core;
 mod floats;
 mod movable;
+mod layout_edit;
 mod pane_drag;
 mod pane_size;
 mod titlebar;
@@ -385,6 +386,10 @@ pub struct AppWindow {
     swapped: HashMap<String, String>,
     float_drag: Option<floats::FloatDrag>,
     pane_drag: Option<pane_drag::PaneDrag>,
+    /// Layout edit mode (`layout.edit`): drag blocks of the shown layout around.
+    layout_edit: bool,
+    edit_drag: Option<layout_edit::EditDrag>,
+    edit_hover: Option<String>,
     pane_grip_hover: Option<String>,
     /// Each pane's top row the grip sits centered in: its top header, else a strip.
     pane_grip_rows: RefCell<HashMap<String, f32>>,
@@ -515,6 +520,9 @@ impl AppWindow {
             swapped: HashMap::new(),
             float_drag: None,
             pane_drag: None,
+            layout_edit: false,
+            edit_drag: None,
+            edit_hover: None,
             pane_grip_hover: None,
             pane_grip_rows: RefCell::default(),
             win_drag: None,
@@ -3541,6 +3549,41 @@ impl AppWindow {
                     _ => true,
                 };
             }
+            "layout.edit" => {
+                self.toggle_layout_edit(cx);
+                return;
+            }
+            "layout.move" => {
+                let id = Self::owned(a, "id").unwrap_or_default();
+                let (target, after) = match (Self::owned(a, "before"), Self::owned(a, "after")) {
+                    (Some(t), None) => (t, false),
+                    (None, Some(t)) => (t, true),
+                    _ => return self.fail("layout.move takes one of before or after"),
+                };
+                // Herdr's own layouts are read-only: edit a copy of the shown one.
+                if shipped_layouts().contains(&self.layout_name.as_str()) {
+                    self.save();
+                    let from = self.layout_name.clone();
+                    // The copy made before is reused: its edits are the person's.
+                    let to = format!("my-{from}");
+                    if !layout_path(&to).exists()
+                        && let Err(e) = clone_layout(&from, &to)
+                    {
+                        return self.fail(format!("cannot clone layout: {e}"));
+                    }
+                    self.switch_layout(Some(&to), window, cx);
+                    if self.layout_name != to {
+                        return self.fail(format!("cannot edit a copy of {from:?}: layout {to:?} did not load"));
+                    }
+                }
+                let mut tree = self.chrome.clone();
+                if let Err(e) = tree.move_node(&id, &target, after) {
+                    return self.fail(e);
+                }
+                let Ok(layout) = serde_json::to_value(&tree) else { return self.fail("cannot write the layout") };
+                self.run("layout.set", json!({ "layout": layout }), window, cx);
+                return;
+            }
             "layout.resize" => {
                 let id = Self::arg(a, "id").unwrap_or_default();
                 let Some(n) = self.find_node_mut(id) else { return self.fail(format!("no node {id:?}")) };
@@ -5364,6 +5407,7 @@ impl Render for AppWindow {
         let tracker = self.float_tracker(cx);
         let win_tracker = self.window_tracker(cx);
         let pane_drag = self.pane_drag_layer(cx);
+        let layout_edit = self.layout_edit_layer(cx);
         div()
             .id("herdr")
             .track_focus(&self.focus)
@@ -5412,7 +5456,14 @@ impl Render for AppWindow {
             }))
             .capture_key_down(cx.listener(|this, ev: &KeyDownEvent, window, cx| {
                 if ev.keystroke.key == "escape" {
-                    if this.pane_drag.is_some() {
+                    if this.layout_edit {
+                        // First Esc drops a drag in progress, the next leaves the mode.
+                        if this.edit_drag.take().is_none() {
+                            this.toggle_layout_edit(cx);
+                        }
+                        cx.notify();
+                        cx.stop_propagation();
+                    } else if this.pane_drag.is_some() {
                         this.cancel_pane_drag(cx);
                         cx.stop_propagation();
                     } else if cx.stop_active_drag(window) {
@@ -5449,6 +5500,7 @@ impl Render for AppWindow {
             .children(tracker)
             .children(win_tracker)
             .child(pane_drag)
+            .children(layout_edit)
             .child(crate::bench::frame_end())
     }
 }

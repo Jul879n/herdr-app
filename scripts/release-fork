@@ -1,0 +1,71 @@
+#!/bin/bash
+# Packages the fork for this machine and prepares its GitHub release:
+#
+#   scripts/release-fork             -> dist/herdr-app-<os>-<arch>.tar.gz + dist/latest.json,
+#                                       prints the gh command
+#   scripts/release-fork --publish   -> also runs it (refuses if the tag exists)
+#
+# Only this machine's target is built; an existing dist/latest.json for the
+# same version keeps its other targets, so run it on each machine in turn.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+repo=Jul879n/herdr-app
+publish=0
+case "${1:-}" in
+  "") ;;
+  --publish) publish=1 ;;
+  *) echo "usage: scripts/release-fork [--publish]" >&2; exit 1 ;;
+esac
+
+version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+tag="v$version"
+
+if [[ $publish == 1 ]] && gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+  echo "release-fork: release $tag already exists in $repo" >&2
+  exit 1
+fi
+
+case "$(uname -s)" in
+  Linux) os=linux ;;
+  Darwin) os=macos ;;
+  MINGW* | MSYS* | CYGWIN*) os=windows ;;
+  *) echo "release-fork: unsupported OS $(uname -s)" >&2; exit 1 ;;
+esac
+case "$(uname -m)" in
+  x86_64 | amd64) arch=x86_64 ;;
+  arm64 | aarch64) arch=aarch64 ;;
+  *) echo "release-fork: unsupported CPU $(uname -m)" >&2; exit 1 ;;
+esac
+target="$os-$arch"
+
+PACKAGE_FORK=1 scripts/package
+
+tarball="dist/herdr-app-$target.tar.gz"
+if command -v sha256sum >/dev/null; then sum=$(sha256sum "$tarball" | cut -d' ' -f1); else sum=$(shasum -a 256 "$tarball" | cut -d' ' -f1); fi
+url="https://github.com/$repo/releases/download/$tag/herdr-app-$target.tar.gz"
+
+python3 -I - "$version" "$target" "$url" "$sum" <<'PY'
+import json, os, sys
+version, target, url, sha = sys.argv[1:5]
+path = "dist/latest.json"
+data = {"version": version, "targets": {}}
+if os.path.exists(path):
+    try:
+        old = json.load(open(path))
+        if old.get("version") == version:
+            data["targets"] = old.get("targets", {})
+    except ValueError:
+        pass
+data["targets"][target] = {"url": url, "sha256": sha}
+with open(path, "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PY
+echo "release-fork: wrote dist/latest.json ($target)"
+
+cmd=(gh release create "$tag" dist/herdr-app-*.tar.gz dist/latest.json
+  --repo "$repo" --title "herdr-app $version" --notes "herdr-app $version")
+echo "release-fork: publish with:"
+printf ' %q' "${cmd[@]}"; echo
+if [[ $publish == 1 ]]; then "${cmd[@]}"; fi

@@ -534,6 +534,50 @@ impl Node {
         self.children_mut()?.iter_mut().find_map(|c| c.find_mut(id))
     }
 
+    /// Moves node `id` next to `target` (before or after it), under `target`'s
+    /// parent, keeping its look and content. Refuses the root, a node onto
+    /// itself or into its own subtree, and unknown ids.
+    pub fn move_node(&mut self, id: &str, target: &str, after: bool) -> Result<(), String> {
+        if id == target {
+            return Err("a node can't move next to itself".into());
+        }
+        if self.id == id {
+            return Err("the root can't move".into());
+        }
+        let node = self.find(id).ok_or_else(|| format!("no node {id:?}"))?;
+        if node.find(target).is_some() {
+            return Err(format!("{target:?} is inside {id:?}"));
+        }
+        if self.find(target).is_none() {
+            return Err(format!("no node {target:?}"));
+        }
+        // Checked before anything is detached: an error leaves the tree as it was.
+        if self.id == target {
+            return Err(format!("{target:?} has no parent"));
+        }
+        let moved = self.detach(id).ok_or_else(|| format!("no node {id:?}"))?;
+        let parent = self.parent_of_mut(target).ok_or_else(|| format!("{target:?} has no parent"))?;
+        let children = parent.children_mut().ok_or("the target's parent has no children")?;
+        let at = children.iter().position(|c| c.id == target).unwrap_or(0);
+        children.insert(if after { at + 1 } else { at }, moved);
+        Ok(())
+    }
+
+    fn detach(&mut self, id: &str) -> Option<Node> {
+        let children = self.children_mut()?;
+        if let Some(i) = children.iter().position(|c| c.id == id) {
+            return Some(children.remove(i));
+        }
+        children.iter_mut().find_map(|c| c.detach(id))
+    }
+
+    fn parent_of_mut(&mut self, id: &str) -> Option<&mut Node> {
+        if self.children().iter().any(|c| c.id == id) {
+            return Some(self);
+        }
+        self.children_mut()?.iter_mut().find_map(|c| c.parent_of_mut(id))
+    }
+
     pub fn find_float_mut(&mut self, id: &str) -> Option<&mut Float> {
         if let Some(i) = self.floating.iter().position(|f| f.id == id) {
             return self.floating.get_mut(i);
@@ -754,6 +798,44 @@ pub fn snap(x: f32, y: f32, w: f32, h: f32) -> (Edge, Align) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn tree() -> Node {
+        serde_json::from_str(
+            r#"{ "id": "root", "type": "row", "children": [
+              { "id": "side", "type": "block", "content": {"mod": "a"} },
+              { "id": "work", "type": "column", "children": [
+                { "id": "tabs", "type": "block", "content": {"mod": "b"} },
+                { "id": "body", "type": "block", "content": {"mod": "c"} },
+                { "id": "status", "type": "block", "content": {"mod": "d"} } ] } ] }"#,
+        )
+        .unwrap()
+    }
+
+    fn ids(n: &Node) -> Vec<&str> {
+        n.children().iter().map(|c| c.id.as_str()).collect()
+    }
+
+    #[test]
+    fn nodes_move_before_or_after_a_sibling_or_into_another_parent() {
+        let mut t = tree();
+        t.move_node("side", "work", true).unwrap();
+        assert_eq!(ids(&t), ["work", "side"]);
+        t.move_node("status", "tabs", false).unwrap();
+        assert_eq!(ids(t.find("work").unwrap()), ["status", "tabs", "body"]);
+        t.move_node("side", "body", true).unwrap();
+        assert_eq!(ids(&t), ["work"]);
+        assert_eq!(ids(t.find("work").unwrap()), ["status", "tabs", "body", "side"]);
+    }
+
+    #[test]
+    fn impossible_moves_are_refused_and_change_nothing() {
+        let mut t = tree();
+        let before = t.clone();
+        for (id, target) in [("root", "side"), ("side", "root"), ("side", "side"), ("work", "tabs"), ("nope", "side"), ("side", "nope")] {
+            assert!(t.move_node(id, target, true).is_err(), "{id} -> {target}");
+        }
+        assert_eq!(t, before);
+    }
 
     #[test]
     fn floats_snap_to_the_nearest_edge_and_third() {

@@ -149,6 +149,9 @@ those files or the generated guide. The app rewrites them on start.
   is no longer shown. It resolves with `[]` and releases only that call.
 - Shipped mods belong to Herdr: duplicate with `mod.clone` before editing.
   Shipped layouts likewise use `layout.clone` for a personal copy.
+  `layout.edit` toggles a drag mode for rearranging the blocks of the shown
+  layout; `layout.move {id, before|after}` does it by command, and on a shipped
+  layout first copies it to `my-<name>` (reused on later moves).
   Discover required arguments with `herdr-app commands`.
 - Save to reload. A broken save keeps the old version running and reports
   an error in `status`; a still-working screen is not proof the edit worked.

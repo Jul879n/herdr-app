@@ -78,6 +78,21 @@ function icon(p, size, color) {
   return p.tint ? svg(p.icon).size(size).flex_none().text_color(color) : image(p.icon).w(size).h(size).flex_none();
 }
 
+// A pane running a known agent that is not in agents(): the shape of an AgentInfo, status "none".
+function unreported(list, all, spaceList) {
+  const known = new Set(list.map((a) => a.address));
+  const where = new Map(spaceList.flatMap((sp) => sp.tabs.map((tab) => [tab.id, { sp, tab }])));
+  return all
+    .filter((p) => p.terminal && p.status == null && p.program?.agent && !known.has(p.terminal) && where.has(p.tab))
+    .map((p) => {
+      const { sp, tab } = where.get(p.tab);
+      return {
+        address: p.terminal, pane: p.pane, space: sp.id, space_name: sp.name, tab: tab.id, tab_index: tab.index, tab_name: tab.name,
+        status: "none", app: p.app, program: p.program, title: p.title, seq: 0, pinned: false, focused: p.focused, unreported: true,
+      };
+    });
+}
+
 export default class Agents extends View {
   init(_props, cx) {
     if (props()?.sortMenu) return;
@@ -222,6 +237,10 @@ export default class Agents extends View {
     const collapsed = narrow();
     const sort = sortOf();
     let list = agents();
+    // Agents Herdr recognizes by their process but that report no status (OSC 7501)
+    // still get a row, with no status mark.
+    const paneList = panes();
+    list = [...list, ...unreported(list, paneList, spaces())];
     this.listed = new Map(list.map((a) => [a.address, a.status]));
     const all = terminals();
     this.migratePins(all);
@@ -280,7 +299,7 @@ export default class Agents extends View {
     // agent's own title, never an automatic tab number unless two rows would
     // otherwise read the same.
     // Read the pane snapshot once: every host read copies the whole list into JS.
-    const leads = leadPanes(panes());
+    const leads = leadPanes(paneList);
     const tabs = new Map(spaces().flatMap(s => s.tabs).map(tab => [tab.id, tab]));
     const labels = new Map(list.map(a => {
       const tab = tabs.get(a.tab);
