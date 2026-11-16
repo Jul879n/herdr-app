@@ -41,7 +41,7 @@ export default class Folders extends View {
     this.recent = JSON.parse(localStorage.getItem("recent") ?? "[]");
     this.listing = {};
     this.input = InputState.new({ placeholder: tr("folders.placeholder") });
-    this.input.on("change", (_e, cx) => { this.query = this.input.value(); this.at = 0; this.first = 0; this.load(this.query, cx); cx.notify(); });
+    this.input.on("change", (_e, cx) => { this.query = this.input.value(); this.at = 0; this.first = 0; this.load(this.query, cx); this.rows(); cx.notify(); });
     this.input.on("submit", () => this.open(this.rows()[this.at]?.path ?? this.typed()));
     this.input.focus();
     cx.timer.after(600, () => this.input.focus());
@@ -59,6 +59,7 @@ export default class Folders extends View {
         localStorage.setItem("index", JSON.stringify(this.index));
       } catch { /* keep the index from last time */ }
       this.indexed = true;
+      this.rows();
       cx.notify();
     });
   }
@@ -96,6 +97,7 @@ export default class Folders extends View {
         const r = await exec("sh", ["-c", LIST, "folders", dir], { timeout: 10000 });
         this.listing[dir] = r.stdout.split("\n").filter(Boolean);
       } catch { /* no listing: no rows */ }
+      this.rows();
       cx.notify();
     });
   }
@@ -123,7 +125,17 @@ export default class Folders extends View {
     run("space.new");
   }
 
+  // Rows are memoized: scoring the whole index is too slow for render's time
+  // budget, so it runs in event handlers (see prewarm) and render reuses it.
   rows() {
+    const q = this.query.trim();
+    const base = q && this.isPath() ? this.expand(this.split(q).dir || "/") : "";
+    const key = [q, this.index?.length ?? -1, this.recent.length, base && (this.listing[base]?.length ?? -1)].join("|");
+    if (this.memo?.key !== key) this.memo = { key, rows: this.compute() };
+    return this.memo.rows;
+  }
+
+  compute() {
     const q = this.query.trim();
     if (!q) return this.recent.map((path) => ({ path, label: this.short(path), hits: [], head: tr("folders.recent") }));
     if (this.isPath()) {

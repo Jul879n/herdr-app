@@ -14,7 +14,7 @@ Linux needs a desktop session and a working Vulkan driver. macOS builds are avai
 
 The installer adds Herdr to your apps and puts the command in `~/.local/bin`.
 Add that folder to your PATH if the installer asks.
-On macOS the app lives in `~/Applications/Herdr.app`.
+On macOS the app lives in `/Applications/Herdr.app`.
 For drag-and-drop installation on Apple Silicon, download [Herdr.dmg](https://releases.herdr.dev/app/Herdr.dmg) and drag Herdr to Applications.
 
 On macOS (Apple Silicon), you can also install with [Homebrew](https://brew.sh/):
