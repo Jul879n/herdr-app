@@ -433,6 +433,22 @@ Hide a layout node.
 |---|---|
 | `id` | yes |
 
+## `layout.move`
+
+Move a layout node before or after another (a Herdr layout is copied to my-<name> first).
+
+| Argument | Required |
+|---|---|
+| `id` | yes |
+| `before` | no |
+| `after` | no |
+
+## `layout.edit`
+
+Toggle layout edit mode: drag the blocks of the screen to rearrange them (Esc leaves).
+
+No arguments.
+
 ## `layout.resize`
 
 Size a layout node.
@@ -511,7 +527,7 @@ No arguments.
 
 ## `app.settings`
 
-Open the settings (section: look, general, agents, keyboard, machines, alerts, updates, privacy).
+Open the settings (section: look, layout, general, agents, keyboard, machines, alerts, updates, privacy).
 
 | Argument | Required |
 |---|---|

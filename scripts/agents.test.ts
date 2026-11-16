@@ -287,3 +287,19 @@ test("a title that opens with a bracket keeps it; each agent's own prefix still 
   ];
   for (const [raw, shown] of titles) expect(clean(raw)).toBe(shown);
 });
+
+test("an agent found by its process but reporting no status still gets a row, without a status mark", () => {
+  const src = source.replace("class Agents", "globalThis.__unreported = unreported; class Agents");
+  new Function("View", "localStorage", "props", "run", "tr", `${src}; return Agents;`)(class {}, {}, () => ({}), () => {}, tr);
+  const unreported = (globalThis as any).__unreported;
+  const spaces = [{ id: "sp1", name: "verdora", tabs: [{ id: "tb1", index: 1, name: "1" }] }];
+  const claude = { key: "claude", agent: true, icon: "icons/claude.svg" };
+  const panes = [
+    { pane: "p1", terminal: "t15", tab: "tb1", status: null, app: null, program: claude, title: "t15", focused: true },
+    { pane: "p2", terminal: "t16", tab: "tb1", status: null, app: null, program: { key: "shell", agent: false }, title: "zsh", focused: false },
+    { pane: "p3", terminal: "t17", tab: "tb1", status: "working", app: "claude-code", program: claude, title: "x", focused: false },
+    { pane: "p4", terminal: null, mod: "files", tab: "tb1", status: null, program: claude, title: "files", focused: false },
+  ];
+  const rows = unreported([{ address: "t17" }], panes, spaces);
+  expect(rows.map((r: any) => [r.address, r.status, r.space_name, r.unreported])).toEqual([["t15", "none", "verdora", true]]);
+});

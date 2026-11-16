@@ -10,6 +10,12 @@
 //! builds) sets `HERDR_APP_RELEASE`. `scripts/install-macos` makes a
 //! Herdr.app too, so the install's shape alone can't tell.
 //!
+//! The fork's own builds (not official releases, not tests, unless
+//! `HERDR_NO_FORK_CHECK` is set) also look at the latest GitHub release of
+//! `Jul879n/herdr-app` on the same clock and expose it in `status()["fork"]`.
+//! A packed install whose release has a `latest.json` asset downloads and
+//! stages that build through the same verified flow.
+//!
 //! The core is checked on the same clock (`core/latest.json`): a newer core
 //! of the same generation is offered (also applied after an app update), unless
 //! a package manager owns it. Within a generation a newer core only adds.
@@ -67,6 +73,77 @@ fn target() -> String {
         "linux"
     };
     format!("{os}-{}", std::env::consts::ARCH)
+}
+
+/// The fork's GitHub repository, whose releases the fork's own builds look for.
+const FORK_REPO: &str = "Jul879n/herdr-app";
+
+/// The fork check runs in the fork's builds only: never in official releases or tests.
+fn fork_enabled() -> bool {
+    option_env!("HERDR_APP_RELEASE").is_none() && !cfg!(test) && std::env::var_os("HERDR_NO_FORK_CHECK").is_none()
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct ForkRelease {
+    version: String,
+    url: Option<String>,
+    notes: Option<String>,
+    has_manifest: bool,
+}
+
+#[derive(Default)]
+struct ForkState {
+    release: Option<ForkRelease>,
+    error: Option<String>,
+}
+
+static FORK: Mutex<ForkState> = Mutex::new(ForkState { release: None, error: None });
+
+/// `releases/latest` JSON to a release; `Ok(None)` when there is no tag.
+fn parse_fork_release(text: &str) -> Result<Option<ForkRelease>, String> {
+    let v: serde_json::Value = serde_json::from_str(text).map_err(|e| format!("github release: {e}"))?;
+    let Some(tag) = v["tag_name"].as_str().filter(|t| !t.is_empty()) else { return Ok(None) };
+    Ok(Some(ForkRelease {
+        version: tag.strip_prefix('v').unwrap_or(tag).to_owned(),
+        url: v["html_url"].as_str().map(str::to_owned),
+        notes: v["body"].as_str().filter(|b| !b.is_empty()).map(str::to_owned),
+        has_manifest: v["assets"].as_array().is_some_and(|a| a.iter().any(|x| x["name"] == "latest.json")),
+    }))
+}
+
+/// Looks at the fork's latest release; with a packed install and a manifest, stages it.
+fn check_fork(root: Option<&Path>) -> Result<(), String> {
+    let latest = fork_latest();
+    let release = match &latest {
+        Ok(r) => r.clone(),
+        Err(_) => None,
+    };
+    {
+        let mut f = FORK.lock().unwrap();
+        f.release = release.clone();
+        f.error = latest.as_ref().err().cloned();
+    }
+    latest?;
+    if let (Some(root), Some(r)) = (root, &release)
+        && r.has_manifest
+        && newer(&r.version, env!("CARGO_PKG_VERSION"))
+    {
+        // A manifest failure is logged only: it never breaks the API check.
+        match check_manifest(root, &format!("https://github.com/{FORK_REPO}/releases/latest/download/latest.json"), None) {
+            Ok(Some(v)) => *READY.lock().unwrap() = Some(v),
+            Ok(None) => {}
+            Err(e) => tracing::warn!("fork update download: {e}"),
+        }
+    }
+    Ok(())
+}
+
+fn fork_latest() -> Result<Option<ForkRelease>, String> {
+    let url = format!("https://api.github.com/repos/{FORK_REPO}/releases/latest");
+    match curl_api(&url)? {
+        Some(text) => parse_fork_release(&text),
+        None => Ok(None),
+    }
 }
 
 fn releases() -> String {
@@ -131,12 +208,29 @@ fn checks_core() -> bool {
 /// For the settings screen: both programs, what's waiting, when we last looked.
 pub fn status() -> serde_json::Value {
     serde_json::json!({
-        "app": { "version": env!("CARGO_PKG_VERSION"), "ready": ready(), "updates": checks_app().is_some() },
+        "app": { "version": env!("CARGO_PKG_VERSION"), "ready": ready(), "updates": checks_app().is_some() || (fork_enabled() && root().is_some()) },
         "notes": crate::update_notes::notes(ready().as_deref()),
         "core": core(),
+        "fork": fork_status(),
         "checked": *CHECKED.lock().unwrap(),
         "checks": RUNNING.load(Ordering::Relaxed),
         "checking": CHECKING.load(Ordering::Relaxed),
+    })
+}
+
+fn fork_status() -> serde_json::Value {
+    if !fork_enabled() {
+        return serde_json::Value::Null;
+    }
+    let f = FORK.lock().unwrap();
+    let latest = f.release.as_ref().map(|r| r.version.as_str());
+    serde_json::json!({
+        "repo": FORK_REPO,
+        "latest": latest,
+        "url": f.release.as_ref().and_then(|r| r.url.as_deref()),
+        "newer": latest.is_some_and(|v| newer(v, env!("CARGO_PKG_VERSION"))),
+        "notes": f.release.as_ref().and_then(|r| r.notes.as_deref()),
+        "error": f.error,
     })
 }
 
@@ -158,7 +252,8 @@ fn sleep(d: Duration) {
 pub fn start() {
     let app = checks_app();
     let core = checks_core();
-    if app.is_none() && !core {
+    let fork = fork_enabled();
+    if app.is_none() && !core && !fork {
         tracing::info!("a build from source: no updates");
         return;
     }
@@ -184,6 +279,11 @@ pub fn start() {
                         succeeded = false;
                     }
                 }
+            }
+            if fork && let Err(e) = check_fork(root().as_deref()) {
+                tracing::warn!("fork update check: {e}");
+                wait = RETRY;
+                succeeded = false;
             }
             if core && let Err(e) = check_core() {
                 tracing::warn!("core update check: {e}");
@@ -267,15 +367,21 @@ fn check(root: &Path) -> Result<Option<String>, String> {
 }
 
 fn check_from(root: &Path, releases: &str) -> Result<Option<String>, String> {
-    let path = "app/latest.json";
-    let text = curl_text(&format!("{releases}/{path}"))?;
+    check_manifest(root, &format!("{releases}/app/latest.json"), Some(releases))
+}
+
+/// `changelog_base`: where `app/<version>/changelog.md` lives (None: no changelog).
+fn check_manifest(root: &Path, manifest_url: &str, changelog_base: Option<&str>) -> Result<Option<String>, String> {
+    let path = "latest.json";
+    let text = curl_text(manifest_url)?;
     let manifest: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("{path}: {e}"))?;
     let version = manifest["version"].as_str().ok_or(format!("{path}: no version"))?;
     if !newer(version, env!("CARGO_PKG_VERSION")) {
         return Ok(None);
     }
     // Notes are optional: a missing feed must never hold up the update.
-    if !crate::update_notes::has(version)
+    if let Some(releases) = changelog_base
+        && !crate::update_notes::has(version)
         && let Ok(text) = curl_text(&format!("{releases}/app/{version}/changelog.md"))
     {
         crate::update_notes::cache(&text);
@@ -370,6 +476,25 @@ fn curl_text(url: &str) -> Result<String, String> {
         return Err(format!("{url}: {}", String::from_utf8_lossy(&out.stderr).trim()));
     }
     String::from_utf8(out.stdout).map_err(|e| e.to_string())
+}
+
+/// GitHub API GET: `Ok(None)` on 404 (no releases yet).
+fn curl_api(url: &str) -> Result<Option<String>, String> {
+    let out = crate::spawn::command(system("curl"))
+        .args(["-sSL", "--max-time", "30", "-H", "Accept: application/vnd.github+json", "-w", "\n%{http_code}", url])
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("curl: {e}"))?;
+    if !out.status.success() {
+        return Err(format!("{url}: {}", String::from_utf8_lossy(&out.stderr).trim()));
+    }
+    let text = String::from_utf8(out.stdout).map_err(|e| e.to_string())?;
+    let (body, code) = text.rsplit_once('\n').unwrap_or(("", &text));
+    match code.trim() {
+        "404" => Ok(None),
+        c if c.starts_with('2') => Ok(Some(body.to_owned())),
+        c => Err(format!("{url}: HTTP {c}")),
+    }
 }
 
 fn run(cmd: &mut Command) -> Result<(), String> {
@@ -469,7 +594,7 @@ pub fn apply_on_startup() -> bool {
         }
         return false;
     }
-    let Some(root) = checks_app() else { return false };
+    let Some(root) = checks_app().or_else(|| root().filter(|_| fork_enabled())) else { return false };
     let staged = staged_version(&root);
     let Some(version) = startup_target(env!("CARGO_PKG_VERSION"), staged.as_deref(), expected.as_deref()) else { return false };
     if swap(&root).is_err() {
@@ -671,6 +796,19 @@ mod tests {
             assert!(!after_update_managed(Err("connection closed".into())), "a failed ownership lookup must still attempt the update");
         }
         assert!(!after_update_managed(Ok(serde_json::json!({"version":"0.1.18", "installed_by":null}))));
+    }
+
+    #[test]
+    fn parses_fork_release() {
+        let r = parse_fork_release(r#"{"tag_name":"v1.2.3","html_url":"https://x/y","body":"notes","assets":[{"name":"latest.json"}]}"#).unwrap().unwrap();
+        assert_eq!(r, ForkRelease { version: "1.2.3".into(), url: Some("https://x/y".into()), notes: Some("notes".into()), has_manifest: true });
+        let r = parse_fork_release(r#"{"tag_name":"1.2.3"}"#).unwrap().unwrap();
+        assert_eq!(r.version, "1.2.3");
+        assert!(!r.has_manifest && r.url.is_none() && r.notes.is_none());
+        assert_eq!(parse_fork_release(r#"{"html_url":"u"}"#), Ok(None));
+        assert_eq!(parse_fork_release("{}"), Ok(None));
+        assert!(parse_fork_release("nope").is_err());
+        assert!(fork_status().is_null(), "tests never run the fork check");
     }
 
     #[test]

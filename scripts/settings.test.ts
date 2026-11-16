@@ -6,8 +6,41 @@ import { readFile } from "node:fs/promises";
 const source = await readFile(new URL("../defaults/frame/settings/main.js", import.meta.url), "utf8");
 // settings.json as the mod sees it through readTextFile / writeTextFile.
 const disk: { raw: string | null; writes: number; fail?: string; readFail?: string; toasts: any[]; keys?: any[] } = { raw: null, writes: 0, toasts: [] };
+// Chainable element stub: records ids, click handlers and children so a test can find a button by id.
+const ui = { calls: [] as any[], tree: null as any, shared: "main" as string };
+function el(): any {
+  const node: any = { id: null, click: null, kids: [] };
+  const self: any = new Proxy(node, {
+    get(n, k: string) {
+      if (k === "__node") return n;
+      return (...a: any[]) => {
+        if (k === "id") n.id = a[0];
+        else if (k === "on_click") n.click = a[0];
+        else if (k === "child") n.kids.push(a[0]);
+        else if (k === "children") n.kids.push(...a[0]);
+        else if (k === "when") { if (a[0]) a[1](self); }
+        return self;
+      };
+    },
+  });
+  return self;
+}
+const found = (e: any, id: string): any => {
+  const n = e?.__node;
+  if (!n) return null;
+  if (n.id === id) return n;
+  for (const k of n.kids) { const r = found(k, id); if (r) return r; }
+  return null;
+};
 const values: Record<string, any> = {
   tr, View: class {},
+  div: el, h_flex: el, v_flex: el, svg: el,
+  layout: () => ui.tree,
+  shared: () => ui.shared,
+  run: (...a: any[]) => { ui.calls.push(a); },
+  exec: (...a: any[]) => { ui.calls.push(["exec", ...a]); return Promise.resolve(null); },
+  window: () => ({ platform: "linux" }),
+  updates: () => ({ app: { version: "1.0.0", ready: null, updates: true }, core: { version: "1", managed: null, ready: null, updating: false, error: null }, checked: null, checks: true, checking: false, fork: { repo: "Jul879n/herdr-app", latest: "1.1.0", url: "https://example.test/r", newer: true, notes: null, error: null } }),
   keys: () => disk.keys,
   appHome: () => "/home",
   notify: (n: any) => { disk.toasts.push(n); },
@@ -108,4 +141,44 @@ test("keys already bound in the section are refused, a bare modifier or Escape c
   const esc = await press(raw, list, capturing(), { key: "escape", keystroke: "escape" });
   expect(esc.capturing).toBeNull();
   expect(disk.writes).toBe(0);
+});
+
+const block = (id: string, extra: any = {}) => ({ id, type: "block", ...extra });
+const tree = () => ({
+  id: "root", type: "row", children: [
+    { id: "sidebar", type: "column", children: [block("brand"), block("spaces")] },
+    { id: "work", type: "column", children: [block("tabs"), { id: "work-body", type: "row", children: [block("main")] }, block("status")] },
+  ],
+});
+function design() {
+  ui.tree = tree();
+  ui.calls = [];
+  const out = new Settings().design({});
+  return { click: (id: string) => { const n = found(out, id); expect(n).not.toBeNull(); n.click(); }, has: (id: string) => found(out, id) !== null };
+}
+
+test("layout arrows move a block before its previous sibling or after its next one", () => {
+  const d = design();
+  d.click("st-ly-a-sidebar");
+  d.click("st-ly-b-status");
+  expect(ui.calls).toEqual([["layout.move", { id: "sidebar", after: "work" }], ["layout.move", { id: "status", before: "work-body" }]]);
+  expect(d.has("st-ly-b-sidebar")).toBe(false);
+  expect(d.has("st-ly-a-work")).toBe(false);
+  expect(d.has("st-ly-a-status")).toBe(false);
+});
+
+test("layout toggles hide or show a block, except the terminals", () => {
+  const d = design();
+  d.click("st-ly-t-tabs");
+  expect(ui.calls).toEqual([["layout.toggle", { id: "tabs" }]]);
+  expect(d.has("st-ly-t-main")).toBe(false);
+});
+
+test("a newer fork release shows a button that opens it", () => {
+  const view = new Settings();
+  const tree = view.updates({ accent: "a", dim: "d", foreground: "f", border: "b" });
+  const btn = found(tree, "st-fork-open");
+  expect(btn).not.toBeNull();
+  btn.click({}, { notify() {} });
+  expect(ui.calls.at(-1)).toEqual(["exec", "xdg-open", ["https://example.test/r"]]);
 });

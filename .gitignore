@@ -2,3 +2,6 @@
 /dist
 /.brain
 /AGENTS.local.md
+/.work/
+**/gpui-kit.d.ts
+**/jsconfig.json

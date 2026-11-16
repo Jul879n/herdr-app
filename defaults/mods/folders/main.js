@@ -4,7 +4,7 @@
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { exec, home, appHome, readTextFile, checking, run, theme, props, closeOverlay, tr } from "herdr";
+import { exec, home, appHome, readTextFile, checking, pickFolder, run, theme, props, closeOverlay, tr } from "herdr";
 
 const SHOWN = 10;
 const ROW_H = 32;
@@ -108,6 +108,21 @@ export default class Folders extends View {
     run("space.new", { folder: path, machine: "" });
   }
 
+  // The system's folder picker; the chosen folder opens like any other.
+  browse(cx) {
+    cx.spawn(async (cx) => {
+      const folder = await pickFolder({ prompt: tr("folders.pick_prompt") });
+      if (folder) this.open(folder);
+      cx.notify();
+    });
+  }
+
+  // A space with no folder chosen.
+  blank() {
+    closeOverlay(props().overlay);
+    run("space.new");
+  }
+
   rows() {
     const q = this.query.trim();
     if (!q) return this.recent.map((path) => ({ path, label: this.short(path), hits: [], head: tr("folders.recent") }));
@@ -151,6 +166,12 @@ export default class Folders extends View {
     return h_flex().children(parts.map(([s, h]) => div().text_color(h ? t.accent : on ? t.foreground : t.muted).when(h, (d) => d.font_semibold()).child(s.replace(/ /g, " "))));
   }
 
+  action(t, id, icon, label, onClick) {
+    return h_flex().id(id).h(32).px(12).gap(8).items_center().rounded(7).border_1().border_color(t.border).bg(t.raised)
+      .cursor_pointer().text_size(12.5).text_color(t.foreground).hover((s) => s.bg(t.hover)).on_click(onClick)
+      .child(svg(icon).size(14).text_color(t.dim)).child(label);
+  }
+
   render() {
     const t = theme();
     const rows = this.rows();
@@ -192,6 +213,9 @@ export default class Folders extends View {
               .child(svg("mods/workspace-chrome/folder.svg").size(14).text_color(t.dim))
               .child(div().flex_1().min_w(0).truncate().child(this.text(t, r.label, r.hits, on)));
           }))
-        : div().px(16).py(14).text_size(13).text_color(t.dim).child(empty));
+        : div().px(16).py(14).text_size(13).text_color(t.dim).child(empty))
+      .child(h_flex().gap(8).flex_none()
+        .child(this.action(t, "fo-browse", "mods/workspace-chrome/folder-plus.svg", tr("folders.browse"), (_e, cx) => this.browse(cx)))
+        .child(this.action(t, "fo-blank", "mods/workspace-chrome/plus.svg", tr("folders.blank"), () => this.blank())));
   }
 }

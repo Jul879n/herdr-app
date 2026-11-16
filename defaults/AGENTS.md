@@ -660,11 +660,11 @@ The main ones:
   programs such as yazi; partial images and scrolling follow the placeholder cells.
 - Agents: `agent.next`, `agent.prev`, `agent.focus {terminal}`.
 - Layout: `layout.switch {name?}`, `layout.toggle {id}`, `layout.show {id}`, `layout.hide {id}`,
-  `layout.resize {id, px | weight}`, `layout.select {stack, child}`, `layout.set {layout}`
+  `layout.resize {id, px | weight}`, `layout.edit` (drag mode, Esc leaves), `layout.move {id, before | after}` (a Herdr layout is copied to `my-<name>` first), `layout.select {stack, child}`, `layout.set {layout}`
   (personal tree edits; on shipped layouts only click/look fields change),
   `layout.reset {name?}` (reset a shipped layout and its clicks),
   `layout.clone {name, as?}` (duplicate, then switch; default `<name>-copy`).
-- App: `mod.clone {name, as?}` (duplicate; default `<name>-copy`), `mod.open {name}` (again: closes it), `overlay.close {id?}`, `app.help` (again: closes it), `app.palette` (again: closes it), `app.settings {section?}` (section: look, general, agents, keyboard, machines, alerts, updates, privacy), `app.keep_awake {mode?}`
+- App: `mod.clone {name, as?}` (duplicate; default `<name>-copy`), `mod.open {name}` (again: closes it), `overlay.close {id?}`, `app.help` (again: closes it), `app.palette` (again: closes it), `app.settings {section?}` (section: look, layout, general, agents, keyboard, machines, alerts, updates, privacy), `app.keep_awake {mode?}`
   (sections: `look`, `machines`, `alerts`, `updates`, `privacy`; Machines lists, updates, renames and removes ssh machines; settings edit the same files you do).
   `app.check_updates` (only a successful check reports Up to date; a failed check clears the checked time and can be retried), `app.update_core` (a newer herdr-core of this generation, terminals kept;
   never one a package manager owns), `app.welcome`, `app.whats_new`, `app.feedback {message?, from?}` (from `"person"` or `"agent"`; opens a review window, where the person can paste up to 3 screenshots; never sends until the person clicks Send), `app.reset`,
@@ -789,6 +789,8 @@ What's about the user, never a look:
   `https://media.herdr.dev/<version>/<scene>.webp` use that directory's
   `<version>/<scene>.webp` instead of downloading. Without the variable,
   media uses the normal HTTPS cache.
+  `updates().fork` is null in official builds, else `{repo, latest, url, newer, notes, error}` for the fork's
+  GitHub releases (`latest` null without `error`: no releases yet); Settings > Updates shows it.
   Mods use `updates().notes` and `presentUpdateNotes([version])` only
   for spotlight entries actually shown expanded, not collapsed headlines.
   macOS releases require Apple Silicon; Intel Macs must build from source.
