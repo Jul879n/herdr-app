@@ -43,6 +43,12 @@ struct Entry {
     /// How to start it, for an agent people can start from a menu (`knownAgents()`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     run: Vec<String>,
+    /// Flags that drop the agent's permission prompts (settings.json `yolo`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    yolo: Vec<String>,
+    /// Arguments that pick up its last conversation in the folder again.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    resume: Vec<String>,
 }
 
 impl Entry {
@@ -57,6 +63,12 @@ impl Entry {
         }
         if !mine.run.is_empty() {
             self.run = mine.run;
+        }
+        if !mine.yolo.is_empty() {
+            self.yolo = mine.yolo;
+        }
+        if !mine.resume.is_empty() {
+            self.resume = mine.resume;
         }
     }
 }
@@ -75,11 +87,48 @@ pub fn startable() -> Vec<Value> {
             .map(|k| {
                 let e = &t.programs[k];
                 let mut v = shown(k, e, None, false, true);
-                v["run"] = json!(e.run);
+                v["run"] = json!(launch(k, false).unwrap_or_else(|| e.run.clone()));
+                v["base"] = json!(e.run);
+                v["yolo"] = json!(e.yolo);
                 v
             })
             .collect()
     })
+}
+
+/// The command line for starting agent `key`: its `run`, plus its yolo flags when
+/// settings.json asks for them, plus (`resume`) the arguments that pick up its
+/// last conversation. None when asked to resume an agent that can't.
+pub fn launch(key: &str, resume: bool) -> Option<Vec<String>> {
+    let settings = crate::settings::get();
+    TABLE.with(|t| launch_in(&t.borrow(), &settings.yolo, key, resume))
+}
+
+fn launch_in(t: &Table, yolo: &crate::settings::Yolo, key: &str, resume: bool) -> Option<Vec<String>> {
+    let e = t.programs.get(key)?;
+    let mut argv = e.run.clone();
+    if yolo.on(key) {
+        argv.extend(e.yolo.iter().cloned());
+    }
+    if resume {
+        if e.resume.is_empty() {
+            return None;
+        }
+        argv.extend(e.resume.iter().cloned());
+    }
+    Some(argv)
+}
+
+/// The table key of the agent a terminal runs, only when it can resume
+/// (its entry has `resume`): `app` is the agent's own report, `argv` the foreground program.
+pub fn agent_key(app: Option<&str>, argv: &[String]) -> Option<String> {
+    TABLE.with(|t| agent_key_in(&t.borrow(), app, argv))
+}
+
+fn agent_key_in(t: &Table, app: Option<&str>, argv: &[String]) -> Option<String> {
+    let resolved = resolve(t, app, argv);
+    let key = resolved["key"].as_str()?;
+    (!t.programs.get(key)?.resume.is_empty()).then(|| key.to_owned())
 }
 
 /// Which of `commands` this machine can start, asked of the shell agents start
@@ -409,6 +458,31 @@ mod tests {
     }
 
     #[test]
+    fn yolo_flags_follow_the_setting() {
+        use crate::settings::Yolo;
+        let on = Yolo::default();
+        let off_for_claude = Yolo { agents: [("claude".to_owned(), false)].into(), ..Yolo::default() };
+        let off = Yolo { enabled: false, ..Yolo::default() };
+        let claude = |y: &Yolo, resume| launch_in(&t(), y, "claude", resume);
+        assert_eq!(claude(&on, false).unwrap().last().unwrap(), "--dangerously-skip-permissions");
+        assert_eq!(claude(&off_for_claude, false).unwrap(), vec!["claude"]);
+        assert_eq!(claude(&off, false).unwrap(), vec!["claude"]);
+        assert_eq!(claude(&off, true).unwrap(), vec!["claude", "--continue"]);
+        assert_eq!(launch_in(&t(), &off, "pig", true), None);
+        // What menus launch (`run`) carries the flag; `base` is the plain command.
+        let listed = startable();
+        let claude = listed.iter().find(|a| a["key"] == "claude").unwrap();
+        assert_eq!(claude["base"], json!(["claude"]));
+        assert_eq!(claude["run"], json!(["claude", "--dangerously-skip-permissions"]));
+    }
+
+    #[test]
+    fn agent_key_needs_resume() {
+        assert_eq!(agent_key_in(&t(), Some("claude-code"), &[]), Some("claude".to_owned()));
+        assert_eq!(agent_key_in(&t(), None, &["pig".to_owned()]), None);
+    }
+
+    #[test]
     fn agents_shells_tools_and_what_interpreters_run() {
         assert_eq!(key(Some("claude-code"), &["/bin/zsh"]), "claude");
         assert_eq!(key(Some("grok-build"), &["/bin/zsh"]), "grok");
@@ -420,7 +494,7 @@ mod tests {
         assert_eq!(key(Some("agent"), &[]), "cursor");
         assert_eq!(key(Some("cursor-agent"), &[]), "cursor");
         assert_eq!(key(Some("newagent"), &[]), "agent");
-        assert!(startable().iter().any(|a| a["key"] == "cursor" && a["run"] == json!(["agent"])));
+        assert!(startable().iter().any(|a| a["key"] == "cursor" && a["base"] == json!(["agent"])));
         // A person's own key still beats a built-in `match` (python matches python3).
         let mut personal = t();
         personal.programs.insert(

@@ -1,6 +1,7 @@
 // Windows: a window app, but tests inherit Cargo's console for their child processes.
 #![cfg_attr(all(windows, not(test)), windows_subsystem = "windows")]
 
+mod awake;
 mod badge;
 mod bench;
 mod commands;
@@ -8,6 +9,7 @@ mod control;
 mod core_bin;
 mod files;
 mod hc;
+mod i18n;
 mod keys;
 mod layout;
 mod layout_sync;
@@ -174,6 +176,7 @@ fn main() {
             mods::init(cx);
             // Not restarted for it: the update goes in when the app quits.
             cx.on_app_quit(|cx| {
+                crate::awake::release();
                 let deadline = std::time::Instant::now() + std::time::Duration::from_millis(250);
                 // Where the window was, for the next start (a quit never asks the window).
                 for w in cx.windows() {

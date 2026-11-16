@@ -133,7 +133,7 @@ the highlighted line shows where it will land.
   terminal, and a program exiting closes its pane, even if Herdr was closed.
   Terminal panes are kept by their machine's core (`keep: true`). A lost
   terminal (core crash, reboot, logout) gets a shell in its last folder,
-  with the same address; its original command is never run again. Splits
+  with the same address; an agent whose programs.json entry has `resume` is started again picking up its conversation (unless `resume_agents` is false); any other command is never run again. Splits
   and mod panes stay. An exited or killed terminal is closed, not restarted.
   Focus, zoom, recent spaces, settled tabs and seen attention stay on this screen.
 - Every terminal is a core terminal. Herdr labels the ones it starts with
@@ -664,7 +664,7 @@ The main ones:
   (personal tree edits; on shipped layouts only click/look fields change),
   `layout.reset {name?}` (reset a shipped layout and its clicks),
   `layout.clone {name, as?}` (duplicate, then switch; default `<name>-copy`).
-- App: `mod.clone {name, as?}` (duplicate; default `<name>-copy`), `mod.open {name}` (again: closes it), `overlay.close {id?}`, `app.help` (again: closes it), `app.palette` (again: closes it), `app.settings {section?}`
+- App: `mod.clone {name, as?}` (duplicate; default `<name>-copy`), `mod.open {name}` (again: closes it), `overlay.close {id?}`, `app.help` (again: closes it), `app.palette` (again: closes it), `app.settings {section?}` (section: look, general, agents, keyboard, machines, alerts, updates, privacy), `app.keep_awake {mode?}`
   (sections: `look`, `machines`, `alerts`, `updates`, `privacy`; Machines lists, updates, renames and removes ssh machines; settings edit the same files you do).
   `app.check_updates` (only a successful check reports Up to date; a failed check clears the checked time and can be retried), `app.update_core` (a newer herdr-core of this generation, terminals kept;
   never one a package manager owns), `app.welcome`, `app.whats_new`, `app.feedback {message?, from?}` (from `"person"` or `"agent"`; opens a review window, where the person can paste up to 3 screenshots; never sends until the person clicks Send), `app.reset`,
@@ -720,6 +720,20 @@ What's about the user, never a look:
   goes there when clicked. `done` / `blocked` replace the bundled MP3s
   (path absolute or relative to `~/.config/herdr-app`). Changes apply live,
   including the Play buttons in Settings > Alerts.
+- `language`: `"es"` or `"en"`. Absent: the system's language. Applies live;
+  macOS menus change on restart.
+- `folders`: `{ "roots": ["~", "~/dev"] }`: where the folder search (`mod.open
+  {name: "folders"}`) looks for folders, up to 4 levels deep, skipping hidden ones
+  and `node_modules`, `target`, `vendor`, `dist`, `build`. Default `["~"]`.
+- `keep_awake`: `"off"` (default), `"auto"` (awake while an agent works) or
+  `"on"`: stops the computer from sleeping. The status bar's cup changes it;
+  `app.keep_awake {mode?}` too. Not on Windows.
+- `resume_agents`: `true` (default). When Herdr finds an agent's terminal lost
+  (reboot, core crash), it starts the agent again with its `resume` arguments
+  from programs.json. `false` leaves the shell alone.
+- `yolo`: `{ "enabled": true, "agents": { "claude": false } }`. Agents started by
+  Herdr get the flag that drops their permission prompts (`yolo` in
+  programs.json); `agents` overrides it per programs.json key. On by default.
 - `core`: the herdr-core binary to use, when it isn't where Herdr looks
   (PATH, the login shell's PATH, `~/.local/bin`, Homebrew, mise, Nix,
   cargo). Read at start.
@@ -855,6 +869,11 @@ has 124 programs (agents, editors, runtimes, tools, databases, infra);
   inside `programs`. Use programs or shell functions, not aliases (the launcher
   does not expand them). On macOS both checks and the menu launcher load login profiles before
   running the agent and leaves an interactive login shell when it ends.
+  `yolo`: flags that drop the agent's permission prompts, added to `run`
+  while settings.json `yolo` allows it. `resume`: arguments added to `run` to
+  pick up the agent's last conversation in the folder (`["--continue"]`);
+  without it the agent isn't resumed. `knownAgents()` returns `base` (the
+  plain `run`) and `yolo` too.
   Codex starts as `codex --no-daemon`: a shared Codex daemon would make later
   sessions use the first terminal's identity and stop with it.
   An explicit key still wins over another entry's `match`, so a personal
@@ -1055,7 +1074,8 @@ The full surface is in `gpui-kit.d.ts` next to this file.
 
 ### The `herdr` module
 
-All of it is in `herdr.d.ts`. In short:
+All of it is in `herdr.d.ts`. In short: `tr(key, vars)` gives interface text in
+the person's language and `locale()` names it.
 
 - Live data: `spaces()` (each with its tabs, status, name, named, folder,
   machine, branch), `machines()` (name, null for this computer; layout:

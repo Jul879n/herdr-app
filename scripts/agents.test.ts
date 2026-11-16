@@ -1,4 +1,5 @@
 import { test, expect } from "bun:test";
+import { tr } from "./tr-stub";
 import { readFile } from "node:fs/promises";
 
 const source = (await readFile(new URL("../defaults/mods/agents/main.js", import.meta.url), "utf8"))
@@ -8,9 +9,9 @@ function harness(pins: string[], globals: Record<string, unknown> = {}) {
   const data = new Map([["pins", JSON.stringify(pins)]]);
   const writes: unknown[] = [];
   const storage = { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => data.set(k, v), removeItem: (k: string) => data.delete(k) };
-  const Agents = new Function("View", "localStorage", "props", "run", ...Object.keys(globals), `${source}; return Agents;`)(
+  const Agents = new Function("View", "localStorage", "props", "run", "tr", ...Object.keys(globals), `${source}; return Agents;`)(
     class {}, storage, () => ({}), (...args: unknown[]) => writes.push(args),
-    ...Object.values(globals),
+    tr, ...Object.values(globals),
   );
   const agents = new Agents();
   agents.init({}, { timer: { every() {} } });
@@ -130,7 +131,7 @@ test("a failed agent check keeps cached launchable agents and shows an error ins
       View: class {}, spaces: () => [], shared: () => ({ "": agents }), setShared: (...args: unknown[]) => writes.push(args),
       knownAgents: async () => { throw Error("shell failed"); },
       theme: () => ({}), props: () => ({}), keys: () => [], window: () => ({ platform: "macos" }), panes: () => [],
-      div: element, svg: element, image: element, h_flex: element, v_flex: element,
+      div: element, svg: element, image: element, h_flex: element, v_flex: element, tr,
     };
     const NewMenu = new Function(...Object.keys(globals), `${menuSource}; return NewMenu;`)(...Object.values(globals));
     const menu = new NewMenu();

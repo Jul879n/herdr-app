@@ -56,8 +56,8 @@ test("git grouping reads refs for normal, detached, unborn and bare worktrees", 
     if (result.exitCode) throw new Error(result.stderr.toString());
     return result.stdout.toString().trim();
   };
-  const execGit = async (_command: string, args: string[], { cwd }: { cwd: string }) => {
-    const result = Bun.spawnSync(["git", ...args], { cwd });
+  const execGit = async (command: string, args: string[], { cwd }: { cwd: string }) => {
+    const result = Bun.spawnSync([command, ...args], { cwd });
     return { code: result.exitCode, stdout: result.stdout.toString(), stderr: result.stderr.toString() };
   };
   const h = harness([], new Map(), [], execGit);

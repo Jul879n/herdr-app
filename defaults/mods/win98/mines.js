@@ -1,6 +1,6 @@
 import { div, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { shared, setShared } from "herdr";
+import { tr, shared, setShared } from "herdr";
 import { unit, root, C, bevel, button, win, icon, label, own, apps, setApp, openMenu, openDialog, sfx, ASSETS } from "./kit.js";
 
 const LEVELS = { beginner: [9, 9, 10], intermediate: [16, 16, 40], expert: [30, 16, 99] };
@@ -119,24 +119,24 @@ export default class Mines {
       if (cmd === "marks" && !this.options.marks) this.cells.forEach((c) => { if (c.mark === 2) c.mark = 0; });
       this.save();
     } else if (cmd === "exit") { setApp("mines", null); this.reset(); }
-    else if (cmd === "best") openDialog("message", { title: "Fastest Mine Sweepers", text: ["Beginner", "Intermediate", "Expert"].map((s) => `${s}: ${this.options.best[s.toLowerCase()] ?? 999} seconds`).join("\n") });
+    else if (cmd === "best") openDialog("message", { title: tr("win98.fastest_mine_sweepers"), text: [[tr("win98.beginner"), "beginner"], [tr("win98.intermediate"), "intermediate"], [tr("win98.expert"), "expert"]].map(([s, k]) => tr("win98.s_n_seconds", { s, n: this.options.best[k] ?? 999 })).join("\n") });
   }
 
   menuItems(help) {
     if (help) return [
-      { label: "&Contents", act: { run: ["app.help"] } },
+      { label: tr("win98.contents_2"), act: { run: ["app.help"] } },
       { sep: true },
-      { label: "&About Mines...", act: { dialog: { kind: "message", title: "About Mines", text: "Mines\nHerdr 98\n\nFind all the mines without uncovering one.\nRight-click to mark a mine. Double-click a number to clear its neighbors." } } },
+      { label: tr("win98.about_mines"), act: { dialog: { kind: "message", title: tr("win98.about_mines_2"), text: tr("win98.mines_herdr_98_find_all") } } },
     ];
     const item = (name, cmd, extra = {}) => ({ label: name, ...extra, act: { shared: ["win98.mines.req", { cmd, t: Date.now() }] } });
-    return [item("&New", "new", { shortcut: "F2" }), { sep: true },
-      ...Object.keys(LEVELS).map((level) => item(`&${level[0].toUpperCase()}${level.slice(1)}`, level, { radio: level === this.options.level })),
-      { sep: true }, item("&Marks (?)", "marks", { checked: this.options.marks }), item("&Color", "color", { checked: this.options.color }), item("&Sound", "sound", { checked: this.options.sound }),
-      { sep: true }, item("&Best Times...", "best"), { sep: true }, item("E&xit", "exit")];
+    return [item(tr("win98.new"), "new", { shortcut: "F2" }), { sep: true },
+      ...Object.keys(LEVELS).map((level) => item(`&${{ beginner: tr("win98.beginner"), intermediate: tr("win98.intermediate"), expert: tr("win98.expert") }[level]}`, level, { radio: level === this.options.level })),
+      { sep: true }, item(tr("win98.marks"), "marks", { checked: this.options.marks }), item("&Color", "color", { checked: this.options.color }), item(tr("win98.sound"), "sound", { checked: this.options.sound }),
+      { sep: true }, item(tr("win98.best_times"), "best"), { sep: true }, item(tr("win98.e_xit"), "exit")];
   }
 
   menuBar(u) {
-    return own(h_flex().flex_none().h(u(18)).items_center().children(["&Game", "&Help"].map((name, i) =>
+    return own(h_flex().flex_none().h(u(18)).items_center().children([tr("win98.game"), tr("win98.help_2")].map((name, i) =>
       bevel(u, shared("win98.menu.owner") === `mines-${i}` ? "well" : "flat", label(name), { pad: [0, 6] }).id(`mines-menu-${i}`).h(u(18)).justify_center()
         .on_mouse_down("left", (e, cx) => {
           cx.stop_propagation();
@@ -192,8 +192,8 @@ export default class Mines {
     const board = bevel(u, "pressed", rows, { pad: 1, bg: C.shadow }).flex_none();
     const body = own(v_flex().flex_none().p(u(5)).gap(u(6)).child(panel).child(board))
       .on_mouse_down_out((_e, cx) => { if (this.held >= 0) { this.held = -1; cx.notify(); } });
-    return root(u, win(u, { id: "mines", title: "Mines", icon: icon(u, "mines", 16), w: this.cols * 16 + 22,
-      controls: [["min", () => setApp("mines", "min"), "Minimize"], ["close", () => { setApp("mines", null); this.reset(); }, "Close"]],
+    return root(u, win(u, { id: "mines", title: tr("win98.mines"), icon: icon(u, "mines", 16), w: this.cols * 16 + 22,
+      controls: [["min", () => setApp("mines", "min"), tr("win98.minimize")], ["close", () => { setApp("mines", null); this.reset(); }, tr("win98.close")]],
       menu: this.menuBar(u), body,
     }));
   }

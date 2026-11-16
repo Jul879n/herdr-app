@@ -51,6 +51,15 @@ blocked to idle without working again keeps its turn.
 How long a done row stays in place while you look at it is up to each
 client.
 
+## `herdr.agent=<key>` and `herdr.agent_pid=<pid>`: resuming
+
+The desktop app writes `herdr.agent` (a programs.json key) and `herdr.agent_pid`
+(the terminal's process id) while a resumable agent runs in the terminal's
+foreground, and clears both when the agent ends. If the terminal's process is
+a different one while `herdr.agent` is still set, core lost it and gave it a
+fresh shell: the app starts the agent again with its `resume` arguments and
+clears the labels.
+
 ## `herdr.pinned=1`: pinned
 
 Present and non-empty: pinned. Unpin by writing it empty

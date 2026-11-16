@@ -370,6 +370,18 @@ pub struct Person {
     /// How big the whole app is drawn (1 = as designed). The zoom keys change it.
     pub zoom: f32,
     pub sounds: Sounds,
+    /// Interface language: "es" or "en". Absent: the system's.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    /// Keep the computer awake: always, while an agent works, or never.
+    #[serde(skip_serializing_if = "crate::awake::Mode::is_off")]
+    pub keep_awake: crate::awake::Mode,
+    /// Relaunch an agent that was running when the app or core went away, resuming its conversation.
+    #[serde(skip_serializing_if = "is_true")]
+    pub resume_agents: bool,
+    /// Launch agents with their "no permission prompts" flag.
+    #[serde(skip_serializing_if = "Yolo::is_default")]
+    pub yolo: Yolo,
     /// The herdr-core to use, when it isn't where Herdr looks (core_bin.rs).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub core: Option<String>,
@@ -459,6 +471,10 @@ impl Default for Person {
         Person {
             zoom: 1.0,
             sounds: Sounds::default(),
+            language: None,
+            keep_awake: crate::awake::Mode::Off,
+            resume_agents: true,
+            yolo: Yolo::default(),
             core: None,
             font: None,
             font_size: None,
@@ -521,6 +537,37 @@ pub struct Settings {
     pub minimum_contrast: f32,
     pub option_as_alt: OptionAsAlt,
     pub sounds: Sounds,
+    /// The interface language now: "es" or "en".
+    pub language: String,
+    pub keep_awake: crate::awake::Mode,
+    pub resume_agents: bool,
+    pub yolo: Yolo,
+}
+
+/// Agents launched without permission prompts: everywhere (`enabled`), with a
+/// per-agent choice (`agents`, by programs.json key) over it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Yolo {
+    pub enabled: bool,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub agents: BTreeMap<String, bool>,
+}
+
+impl Default for Yolo {
+    fn default() -> Self {
+        Yolo { enabled: true, agents: BTreeMap::new() }
+    }
+}
+
+impl Yolo {
+    pub fn is_default(&self) -> bool {
+        *self == Yolo::default()
+    }
+
+    pub fn on(&self, key: &str) -> bool {
+        self.agents.get(key).copied().unwrap_or(self.enabled)
+    }
 }
 
 /// Attention sounds: when an agent needs you, and when one finished while you
@@ -568,6 +615,10 @@ impl Default for Settings {
             minimum_contrast: 1.0,
             option_as_alt: OptionAsAlt::Auto,
             sounds: Sounds::default(),
+            language: "en".into(),
+            keep_awake: crate::awake::Mode::Off,
+            resume_agents: true,
+            yolo: Yolo::default(),
         }
     }
 }
@@ -607,6 +658,10 @@ impl Settings {
             terminal_padding: look.terminal_padding.unwrap_or(d.terminal_padding),
             terminal_opacity: look.terminal_opacity.unwrap_or(1.0).clamp(0.0, 1.0),
             sounds: person.sounds.clone(),
+            language: crate::i18n::resolve(person.language.as_deref()).into(),
+            keep_awake: person.keep_awake,
+            resume_agents: person.resume_agents,
+            yolo: person.yolo.clone(),
             clipboard_write: person.clipboard_write,
             copy_on_select: person.copy_on_select,
             minimum_contrast: person.minimum_contrast,
@@ -752,6 +807,7 @@ fn person_text(person: &Person, previous: &str) -> std::io::Result<String> {
 
 /// Installs new settings; returns whether anything changed.
 pub fn set(s: Settings) -> bool {
+    crate::i18n::set(&s.language);
     #[cfg(target_os = "macos")]
     gpui_macos::set_option_as_alt(match s.option_as_alt {
         OptionAsAlt::Auto => None,
@@ -1080,7 +1136,7 @@ mod tests {
     /// settings.json key.
     #[test]
     fn the_guide_explains_every_setting() {
-        let all = Person { core: Some(String::new()), font: Some(String::new()), font_size: Some(1.0), font_weight: Some(400), ui_font: Some(String::new()), telemetry: false, clipboard_write: false, copy_on_select: false, appearance: Appearance::Light, theme: Some(crate::layout::ThemeChoice::One(String::new())), colors: [("text".into(), String::new())].into(), ..Person::default() };
+        let all = Person { language: Some(String::new()), keep_awake: crate::awake::Mode::On, resume_agents: false, yolo: Yolo { enabled: false, ..Yolo::default() }, core: Some(String::new()), font: Some(String::new()), font_size: Some(1.0), font_weight: Some(400), ui_font: Some(String::new()), telemetry: false, clipboard_write: false, copy_on_select: false, appearance: Appearance::Light, theme: Some(crate::layout::ThemeChoice::One(String::new())), colors: [("text".into(), String::new())].into(), ..Person::default() };
         let keys: Vec<String> = serde_json::to_value(&all).unwrap().as_object().unwrap().keys().cloned().collect();
         let guide = include_str!("../defaults/AGENTS.md");
         let section = guide.split("## The person").nth(1).and_then(|s| s.split("\n## ").next()).unwrap_or_default();

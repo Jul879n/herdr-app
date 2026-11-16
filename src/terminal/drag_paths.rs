@@ -3,39 +3,39 @@
 use gpui_shell::DraggedPaths;
 use std::path::PathBuf;
 
-fn validate_paths(paths: impl IntoIterator<Item = impl AsRef<str>>) -> Result<(), &'static str> {
+fn validate_paths(paths: impl IntoIterator<Item = impl AsRef<str>>) -> Result<(), String> {
     let mut any = false;
     for path in paths {
         any = true;
         let path = path.as_ref();
         // Even inside shell quotes, a newline becomes Enter in an unbracketed paste.
         if path.is_empty() || path.chars().any(char::is_control) {
-            return Err("Paths containing control characters cannot be pasted safely");
+            return Err(crate::i18n::t("rs.drag_paths.paths_containing_control_characters_cannot"));
         }
     }
-    if any { Ok(()) } else { Err("No files were dropped") }
+    if any { Ok(()) } else { Err(crate::i18n::t("rs.drag_paths.no_files_were_dropped")) }
 }
 
-pub(super) fn same_machine(paths: &DraggedPaths, target: &str) -> Result<bool, &'static str> {
+pub(super) fn same_machine(paths: &DraggedPaths, target: &str) -> Result<bool, String> {
     validate_paths(&paths.paths)?;
     match paths.on.as_deref() {
         None => Ok(false),
         Some(source) if target.split_once('/').map(|(machine, _)| machine) == Some(source) => Ok(true),
-        Some(_) => Err("Drop these files into a terminal on their own machine. Copying from another machine is not supported yet."),
+        Some(_) => Err(crate::i18n::t("rs.drag_paths.drop_these_files_into_a")),
     }
 }
 
-pub(super) fn validate_upload(paths: &[PathBuf]) -> Result<(), &'static str> {
+pub(super) fn validate_upload(paths: &[PathBuf]) -> Result<(), String> {
     validate_paths(paths.iter().map(|p| p.to_string_lossy()))
 }
 
 /// Why this one item can't be copied to another machine; the rest of a drop still goes.
-pub(super) fn upload_refusal(path: &std::path::Path) -> Option<&'static str> {
-    path.is_dir().then_some("Copying local folders to another machine is not supported yet. Drop the folder into a terminal on this computer instead.")
+pub(super) fn upload_refusal(path: &std::path::Path) -> Option<String> {
+    path.is_dir().then(|| crate::i18n::t("rs.drag_paths.copying_local_folders_to_another"))
 }
 
 /// Paths as the destination shell reads them, with a trailing space, never Enter.
-pub(super) fn quote_paths(paths: impl IntoIterator<Item = String>, target: &str, local_windows: bool) -> Result<String, &'static str> {
+pub(super) fn quote_paths(paths: impl IntoIterator<Item = String>, target: &str, local_windows: bool) -> Result<String, String> {
     let paths: Vec<_> = paths.into_iter().collect();
     validate_paths(&paths)?;
     // Remote Files and file transfers currently target Unix machines, even from Windows.
@@ -54,7 +54,7 @@ pub(super) fn quote_paths(paths: impl IntoIterator<Item = String>, target: &str,
 pub(super) fn unavailable(body: &str) {
     crate::mods::request(crate::mods::Request::OpenOverlay {
         id: crate::mods::new_overlay_id(),
-        spec: serde_json::json!({"kind":"toast", "notification":{"title":"File drop unavailable", "body":body, "level":"info"}}),
+        spec: serde_json::json!({"kind":"toast", "notification":{"title":crate::i18n::t("rs.drag_paths.file_drop_unavailable"), "body":body, "level":"info"}}),
     });
 }
 
@@ -168,7 +168,7 @@ mod tests {
         {
             let link = root.0.join("folder-link");
             std::os::unix::fs::symlink(&root.0, &link).unwrap();
-            assert_eq!(upload_refusal(&link), Some(error));
+            assert_eq!(upload_refusal(&link), Some(error.clone()));
         }
     }
 }

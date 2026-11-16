@@ -1,12 +1,14 @@
 import { expect, test } from "bun:test";
+import { tr } from "./tr-stub";
 import { readFile } from "node:fs/promises";
 
 // What a click in the Settings window writes to settings.json, without a window or a core.
 const source = await readFile(new URL("../defaults/frame/settings/main.js", import.meta.url), "utf8");
 // settings.json as the mod sees it through readTextFile / writeTextFile.
-const disk: { raw: string | null; writes: number; fail?: string; readFail?: string; toasts: any[] } = { raw: null, writes: 0, toasts: [] };
+const disk: { raw: string | null; writes: number; fail?: string; readFail?: string; toasts: any[]; keys?: any[] } = { raw: null, writes: 0, toasts: [] };
 const values: Record<string, any> = {
-  View: class {},
+  tr, View: class {},
+  keys: () => disk.keys,
   appHome: () => "/home",
   notify: (n: any) => { disk.toasts.push(n); },
   readTextFile: async () => {
@@ -73,4 +75,37 @@ test("a settings.json that can't be read, or an edit that throws, says why", asy
   const thrown = await change("{}", () => { throw new Error("no such section"); });
   expect(disk.writes).toBe(0);
   expect(thrown.toasts).toEqual([{ title: "Cannot read settings.json", body: "no such section", level: "error" }]);
+});
+
+/** Presses `keystroke` while the shortcut `old` of `section` is being changed; the toasts. */
+async function press(raw: string, keys: any[], capturing: any, e: { key: string; keystroke: string }) {
+  Object.assign(disk, { raw, writes: 0, fail: undefined, readFail: undefined, toasts: [], keys });
+  const view = new Settings();
+  view.person = {};
+  view.capturing = capturing;
+  view.capture(e, { spawn: (f: (cx: any) => Promise<void>) => f({ notify() {} }) });
+  await new Promise((r) => setTimeout(r, 30));
+  return view;
+}
+
+test("a shortcut moves to the keys pressed, in the same section", async () => {
+  const raw = '{"global":{"alt-1":"space.select:1","alt-2":"space.select:2"}}';
+  const list = [{ section: "global", keys: "alt-1", action: "space.select:1" }, { section: "global", keys: "alt-2", action: "space.select:2" }];
+  const view = await press(raw, list, { section: "global", action: "space.select:1", old: "alt-1" }, { key: "y", keystroke: "ctrl-shift-y" });
+  expect(JSON.parse(disk.raw!)).toEqual({ global: { "alt-2": "space.select:2", "ctrl-shift-y": "space.select:1" } });
+  expect(view.capturing).toBeNull();
+});
+
+test("keys already bound in the section are refused, a bare modifier or Escape change nothing", async () => {
+  const raw = '{"global":{"alt-1":"space.select:1","alt-2":"space.select:2"}}';
+  const list = [{ section: "global", keys: "alt-1", action: "space.select:1" }, { section: "global", keys: "alt-2", action: "space.select:2" }];
+  const capturing = () => ({ section: "global", action: "space.select:1", old: "alt-1" });
+  await press(raw, list, capturing(), { key: "x", keystroke: "alt-2" });
+  expect(disk.toasts).toEqual([{ title: "Already used by space.select:2", level: "error" }]);
+  expect(disk.writes).toBe(0);
+  const bare = await press(raw, list, capturing(), { key: "shift", keystroke: "shift" });
+  expect(bare.capturing).not.toBeNull();
+  const esc = await press(raw, list, capturing(), { key: "escape", keystroke: "escape" });
+  expect(esc.capturing).toBeNull();
+  expect(disk.writes).toBe(0);
 });

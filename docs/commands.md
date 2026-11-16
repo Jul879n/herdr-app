@@ -511,7 +511,7 @@ No arguments.
 
 ## `app.settings`
 
-Open the settings (section: look, alerts, updates).
+Open the settings (section: look, general, agents, keyboard, machines, alerts, updates, privacy).
 
 | Argument | Required |
 |---|---|
@@ -542,6 +542,14 @@ Use a theme (a preset or themes/<name>.json).
 | Argument | Required |
 |---|---|
 | `name` | yes |
+
+## `app.keep_awake`
+
+Keep the computer awake: "on" (always), "auto" (while an agent works) or "off"; with no mode, the next one.
+
+| Argument | Required |
+|---|---|
+| `mode` | no |
 
 ## `app.zoom_in`
 

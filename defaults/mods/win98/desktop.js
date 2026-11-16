@@ -6,8 +6,8 @@
 
 import { div } from "gpui-kit";
 import { v_flex } from "gpui-base";
-import { spaces, run } from "herdr";
-import { C, unit, root, icon, openMenu, openDialog, perform, sfx } from "./kit.js";
+import { tr, spaces, run } from "herdr";
+import { C, unit, root, icon, openMenu, openDialog, perform, sfx, statusEs } from "./kit.js";
 import { closeSpaceAsk } from "./taskbar.js";
 
 export default class Desktop {
@@ -75,37 +75,37 @@ export default class Desktop {
     const all = spaces();
     const badgeOf = (s) => (s.status === "blocked" ? "warn-badge" : s.status === "working" ? "hourglass" : s.status === "done" ? "check-badge" : null);
     const items = [
-      this.item(u, "computer", "computer", "My Computer", { open: () => openDialog("mycomputer", {}) }),
-      this.item(u, "bin", "bin", "Recycle Bin", { open: () => openDialog("bin", {}) }),
+      this.item(u, "computer", "computer", tr("win98.my_computer"), { open: () => openDialog("mycomputer", {}) }),
+      this.item(u, "bin", "bin", tr("win98.recycle_bin"), { open: () => openDialog("bin", {}) }),
       ...all.map((s) =>
         this.item(u, s.id, s.machine ? "netfolder" : s.active ? "folder-open" : "folder", s.name, {
           selected: s.active,
           badge: badgeOf(s),
           open: () => run("space.select", { id: s.id }),
           menu: () => [
-            { label: "&Open", bold: true, act: { run: ["space.select", { id: s.id }] } },
-            { label: "New &Tab...", act: { dialog: { kind: "prompt", title: "New Tab", text: `Type a name for the new tab in '${s.name}':`, icon: "dos", command: { name: "tab.new", args: { space: s.id } } } } },
+            { label: tr("win98.open"), bold: true, act: { run: ["space.select", { id: s.id }] } },
+            { label: tr("win98.new_tab"), act: { dialog: { kind: "prompt", title: tr("win98.new_tab_2"), text: tr("win98.type_a_name_for_the", { space: s.name }), icon: "dos", command: { name: "tab.new", args: { space: s.id } } } } },
             { sep: true },
-            { label: "Re&name", act: { dialog: { kind: "prompt", title: "Rename", text: "Type a new name for this space:", icon: "folder", value: s.name, command: { name: "space.rename", args: { id: s.id } } } } },
-            { label: "&Delete", act: { dialog: { kind: "confirm", ...closeSpaceAsk(s) } } },
+            { label: tr("win98.re_name"), act: { dialog: { kind: "prompt", title: tr("win98.rename"), text: tr("win98.type_a_new_name_for"), icon: "folder", value: s.name, command: { name: "space.rename", args: { id: s.id } } } } },
+            { label: tr("win98.delete"), act: { dialog: { kind: "confirm", ...closeSpaceAsk(s) } } },
             { sep: true },
             {
-              label: "P&roperties",
+              label: tr("win98.p_roperties"),
               act: {
                 dialog: {
                   kind: "message",
-                  title: `${s.name} Properties`,
+                  title: tr("win98.name_properties", { name: s.name }),
                   icon: "folder",
-                  text: `Type:  Space\nLocation:  ${s.machine ?? "This computer"}\nFolder:  ${s.folder || "~"}\nBranch:  ${s.branch ?? "(none)"}\nContains:  ${s.tabs.length} tab(s)\nStatus:  ${s.status ?? "idle"}`,
+                  text: tr("win98.type_space_location_machine_folder", { machine: s.machine ?? tr("win98.this_computer"), folder: s.folder || "~", branch: s.branch ?? tr("win98.none"), n: s.tabs.length, status: statusEs(s.status ?? "idle") }),
                 },
               },
             },
           ],
         }),
       ),
-      this.item(u, "mines", "mines", "Mines", { open: () => perform({ app: "mines" }) }),
-      this.item(u, "sol", "sol", "Solitaire", { open: () => perform({ app: "sol" }) }),
-      this.item(u, "net", "network", "Network Neighborhood", { open: () => openDialog("network", {}) }),
+      this.item(u, "mines", "mines", tr("win98.mines"), { open: () => perform({ app: "mines" }) }),
+      this.item(u, "sol", "sol", tr("win98.solitaire"), { open: () => perform({ app: "sol" }) }),
+      this.item(u, "net", "network", tr("win98.network_neighborhood"), { open: () => openDialog("network", {}) }),
     ];
     return root(
       u,
@@ -122,23 +122,23 @@ export default class Desktop {
         .on_mouse_down("right", () => {
           sfx("menu");
           openMenu([
-            { label: "Arrange &Icons", sub: [{ label: "by &Name", disabled: true }, { label: "by &Type", disabled: true }, { label: "&Auto Arrange", checked: true, disabled: true }] },
-            { label: "Line &up Icons", disabled: true },
+            { label: tr("win98.arrange_icons"), sub: [{ label: tr("win98.by_name"), disabled: true }, { label: tr("win98.by_type"), disabled: true }, { label: tr("win98.auto_arrange"), checked: true, disabled: true }] },
+            { label: tr("win98.line_up_icons"), disabled: true },
             { sep: true },
-            { label: "&Refresh", act: { run: ["layout.switch", { name: "win98" }] } },
+            { label: tr("win98.refresh"), act: { run: ["layout.switch", { name: "win98" }] } },
             { sep: true },
-            { label: "&Paste", disabled: true },
-            { label: "Paste &Shortcut", disabled: true },
+            { label: tr("win98.paste"), disabled: true },
+            { label: tr("win98.paste_shortcut"), disabled: true },
             { sep: true },
             {
-              label: "Ne&w",
+              label: tr("win98.ne_w"),
               sub: [
-                { label: "&Space...", icon: "folder", act: { dialog: { kind: "prompt", title: "New Space", text: "Type a name for the new space:", icon: "folder", machines: true, command: { name: "space.new", args: {} } } } },
-                { label: "&Tab...", icon: "dos", act: { dialog: { kind: "prompt", title: "New Tab", text: "Type a name for the new tab:", icon: "dos", command: { name: "tab.new", args: {} } } } },
+                { label: tr("win98.space"), icon: "folder", act: { dialog: { kind: "prompt", title: tr("win98.new_space"), text: tr("win98.type_a_name_for_the_2"), icon: "folder", machines: true, command: { name: "space.new", args: {} } } } },
+                { label: tr("win98.tab"), icon: "dos", act: { dialog: { kind: "prompt", title: tr("win98.new_tab_2"), text: tr("win98.type_a_name_for_the_3"), icon: "dos", command: { name: "tab.new", args: {} } } } },
               ],
             },
             { sep: true },
-            { label: "P&roperties", act: { dialog: { kind: "display" } } },
+            { label: tr("win98.p_roperties"), act: { dialog: { kind: "display" } } },
           ]);
         }),
     ).children(items);

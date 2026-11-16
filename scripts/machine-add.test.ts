@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { tr } from "./tr-stub";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,7 +14,7 @@ function setup(result: any) {
   const timers: ((cx: any) => void)[] = [];
   let task: Promise<void>;
   const values = {
-    View: class {}, div() {}, svg() {}, TextView: {}, v_flex() {}, h_flex() {},
+    tr, View: class {}, div() {}, svg() {}, TextView: {}, v_flex() {}, h_flex() {},
     InputState: { new: () => ({ on() {}, focus() {}, set_value() {} }) }, Input: {},
     home: () => "/home/test", readTextFile: async () => null,
     theme() {}, props: () => ({}), closeOverlay() {},
