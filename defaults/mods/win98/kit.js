@@ -7,7 +7,7 @@
 
 import { div, svg, image, PathBuilder, Background } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { settings, shared, setShared, playSound, run, layout, openOverlay, closeOverlay, exec, window as appWindow } from "herdr";
+import { tr, settings, shared, setShared, playSound, run, layout, openOverlay, closeOverlay, exec, window as appWindow } from "herdr";
 
 export const C = {
   face: "#c0c0c0",
@@ -431,7 +431,7 @@ export function setApp(name, state) {
 export function dosPath(path, home) {
   if (!path) return "C:\\";
   let p = path;
-  if (home && (p === home || p.startsWith(home + "/"))) p = "C:\\My Documents" + p.slice(home.length);
+  if (home && (p === home || p.startsWith(home + "/"))) p = "C:\\" + tr("win98.my_documents") + p.slice(home.length);
   else p = "C:" + p;
   return p.replaceAll("/", "\\").replace(/\\$/, "") || "C:\\";
 }
@@ -477,3 +477,6 @@ export function fitLayout() {
   if (changed) run("layout.set", { layout: l });
   return changed;
 }
+
+/** Localized label for an agent status (display only). */
+export const statusEs = (s) => ({ working: "win98.working", blocked: "win98.blocked", done: "win98.done", idle: "win98.idle" })[s] ? tr(({ working: "win98.working", blocked: "win98.blocked", done: "win98.done", idle: "win98.idle" })[s]) : s;

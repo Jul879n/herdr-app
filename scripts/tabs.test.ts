@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, expect, setSystemTime, test } from "bun:test";
+import { tr } from "./tr-stub";
 import { readFile } from "node:fs/promises";
 
 // Exercise the shipped tab bar's wheel handler without a window or a core.
@@ -24,7 +25,7 @@ const element = () => new Element();
 const commands: string[] = [];
 const store: Record<string, string> = {};
 const values: Record<string, unknown> = {
-  View: class {}, div: element, svg: element, image: element, h_flex: element,
+  tr, View: class {}, div: element, svg: element, image: element, h_flex: element,
   ScrollHandle: { new: () => ({ scroll_to_item() {} }) },
   spaces: () => [{ id: "s1", active: true, tabs: [{ id: "t1", name: "a" }, { id: "t2", name: "b", active: true }, { id: "t3", name: "c" }] }],
   panes: () => [], run(command: string) { commands.push(command); }, openOverlay() {}, theme: () => ({}),

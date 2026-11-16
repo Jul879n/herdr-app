@@ -35,7 +35,7 @@ export function writeTextFile(path: string, text: string, expected: string | nul
  *  first, and whether each is installed: asked of the shell agents start in (on another machine,
  *  `on`, its login/interactive shell when supported), at most once a minute per machine.
  *  Rejects if the check fails; failed checks are not cached. Start one with its `run` as `argv`. */
-export function knownAgents(options?: { on?: string | null }): Promise<(Program & { run: string[]; installed: boolean })[]>;
+export function knownAgents(options?: { on?: string | null }): Promise<(Program & { run: string[]; base: string[]; yolo: string[]; installed: boolean })[]>;
 
 /** Opens the system's folder picker (this machine). Resolves with the chosen folder, or null
  *  when the person cancels. `prompt`: the confirm button's text (default "Open"). */
@@ -444,6 +444,12 @@ export function props(): any;
 
 /** Reads a value every mod can see (persisted). */
 export function shared(key: string): unknown;
+
+/** Interface text for `key` in the person's language (settings.json `language`); English when the language lacks it, the key itself when unknown. `{name}` is replaced by `vars.name`. */
+export function tr(key: string, vars?: Record<string, string | number>): string;
+
+/** The interface language now. */
+export function locale(): "en" | "es";
 
 /** Sets a shared value; every mod re-renders so it can react. */
 export function setShared(key: string, value: unknown): null;

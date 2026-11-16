@@ -1,3 +1,4 @@
+import { tr } from "./tr-stub";
 import { test, expect, spyOn } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { mkdtempSync, mkdirSync, realpathSync, rmSync } from "node:fs";
@@ -23,7 +24,7 @@ function harness(replies: unknown[] = [], storage = new Map<string, string>(), s
     if (method === "track_scroll") tracked.push(args[0]);
     return element;
   } });
-  const Spaces = new Function("View", "hc", "localStorage", "spaces", "panes", "run", "v_flex", "h_flex", "div", "svg", "shared", "machines", "exec", "window", "watchFolder", "ScrollHandle", "theme", "layout", "setShared", `${source}; return Spaces;`)(
+  const Spaces = new Function("View", "hc", "localStorage", "spaces", "panes", "run", "v_flex", "h_flex", "div", "svg", "shared", "machines", "exec", "window", "watchFolder", "ScrollHandle", "theme", "layout", "setShared", "tr", `${source}; return Spaces;`)(
     class {},
     async (args: string[]) => {
       calls.push(args);
@@ -38,7 +39,7 @@ function harness(replies: unknown[] = [], storage = new Map<string, string>(), s
       moves.push(args);
     },
     ...Array(4).fill(() => element), () => null, () => availability, execGit, () => ({ active: true }), watch,
-    ScrollHandle, theme, () => env.layout, () => {},
+    ScrollHandle, theme, () => env.layout, () => {}, tr,
   );
   const view = new Spaces();
   view.reconnecting = {};
@@ -56,8 +57,8 @@ test("git grouping reads refs for normal, detached, unborn and bare worktrees", 
     if (result.exitCode) throw new Error(result.stderr.toString());
     return result.stdout.toString().trim();
   };
-  const execGit = async (_command: string, args: string[], { cwd }: { cwd: string }) => {
-    const result = Bun.spawnSync(["git", ...args], { cwd });
+  const execGit = async (command: string, args: string[], { cwd }: { cwd: string }) => {
+    const result = Bun.spawnSync([command, ...args], { cwd });
     return { code: result.exitCode, stdout: result.stdout.toString(), stderr: result.stderr.toString() };
   };
   const h = harness([], new Map(), [], execGit);

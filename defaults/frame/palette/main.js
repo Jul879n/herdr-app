@@ -7,7 +7,7 @@
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { commands, layouts, keys, run, theme, props, closeOverlay, openOverlay, shared, window as win } from "herdr";
+import { commands, layouts, keys, run, theme, props, closeOverlay, openOverlay, shared, window as win, tr } from "herdr";
 
 // The list keeps one height while you move: rows and group titles have fixed
 // heights, and the window shows as many as fit in LIST_H.
@@ -17,49 +17,50 @@ const SHOWN = 10;
 const ROW_H = 32;
 const HEAD_H = 26;
 const LIST_H = SHOWN * ROW_H;
-const GROUPS = ["Recent", "Tab", "Pane", "Space", "Layout", "Terminal", "Agent", "Window", "App"];
+const GROUPS = ["palette.recent", "palette.tab", "palette.pane", "palette.space", "palette.layout", "palette.terminal", "palette.agent", "palette.window", "palette.app"];
 
 // The palette's names for commands: [command, args, group, title, keywords].
 const NAMED = [
-  ["tab.new", {}, "Tab", "New tab", "tab agent new task"],
-  ["mod.open", { name: "picker" }, "Tab", "Go to space or tab…", "switch jump find"],
-  ["tab.rename", {}, "Tab", "Rename tab", "tab"],
-  ["tab.close", {}, "Tab", "Close tab", "tab kill"],
-  ["tab.next", {}, "Tab", "Next tab", "tab"],
-  ["tab.prev", {}, "Tab", "Previous tab", "tab"],
-  ["pane.split", { direction: "right" }, "Pane", "Split right", "vertical"],
-  ["pane.split", { direction: "down" }, "Pane", "Split down", "horizontal"],
-  ["pane.close", {}, "Pane", "Close pane", "kill"],
-  ["pane.zoom", {}, "Pane", "Zoom pane", "maximize fullscreen"],
-  ...["left", "right", "up", "down"].map((d) => ["pane.go", { direction: d }, "Pane", `Focus pane ${d}`, "move go"]),
-  ...["left", "right", "up", "down"].map((d) => ["pane.swap", { direction: d }, "Pane", `Swap pane ${d}`, "move"]),
-  ["space.new", {}, "Space", "New space", "workspace"],
-  ["space.rename", {}, "Space", "Rename space", "workspace"],
-  ["space.close", {}, "Space", "Close space", "workspace kill"],
-  ["space.next", {}, "Space", "Next space", "workspace"],
-  ["space.prev", {}, "Space", "Previous space", "workspace"],
-  ["layout.switch", {}, "Layout", "Next layout", "look switch"],
-  ["layout.reset", {}, "Layout", "Reset layout", "new version default restore herdr's"],
-  ["layout.clone", {}, "Layout", "Duplicate layout", "clone copy customize"],
-  ["mod.clone", {}, "Layout", "Duplicate mod", "clone copy customize"],
-  ["terminal.open", {}, "Terminal", "New terminal", "shell"],
-  ["terminal.copy", {}, "Terminal", "Copy", "clipboard"],
-  ["terminal.paste", {}, "Terminal", "Paste", "clipboard"],
-  ["agent.next", {}, "Agent", "Next agent", ""],
-  ["agent.prev", {}, "Agent", "Previous agent", ""],
-  ["window.minimize", {}, "Window", "Minimize window", ""],
-  ["window.maximize", {}, "Window", "Maximize window", "restore"],
-  ["window.close", {}, "Window", "Close window", "quit"],
-  ["app.settings", {}, "App", "Settings", "preferences options config look font theme sound"],
-  ["app.help", {}, "App", "Keys", "keybindings shortcuts help"],
-  ["app.welcome", {}, "App", "Welcome", "intro start onboarding"],
-  ["app.whats_new", {}, "App", "What's new", "release changes news update"],
-  ["app.reset", {}, "App", "Reset to the default screen", "escape hatch broken restore"],
-  ["app.zoom_in", {}, "App", "Zoom in", "bigger font size"],
-  ["app.zoom_out", {}, "App", "Zoom out", "smaller font size"],
-  ["app.zoom_reset", {}, "App", "Reset zoom", "font size"],
-  ["app.quit", {}, "App", "Quit Herdr", "exit"],
-  ...["graphite", "ink", "moss", "atom-one-dark"].map((n) => ["app.theme", { name: n }, "App", `Theme: ${n.replace(/-/g, " ")}`, "colors look"]),
+  ["tab.new", {}, "palette.tab", "palette.new_tab", "tab agent new task pestaña agente nueva tarea"],
+  ["mod.open", { name: "picker" }, "palette.tab", "palette.go_to_space_or_tab", "switch jump find cambiar saltar buscar"],
+  ["mod.open", { name: "folders" }, "palette.tab", "folders.open", "folder directory open carpeta directorio abrir"],
+  ["tab.rename", {}, "palette.tab", "palette.rename_tab", "tab renombrar"],
+  ["tab.close", {}, "palette.tab", "palette.close_tab", "tab kill cerrar"],
+  ["tab.next", {}, "palette.tab", "palette.next_tab", "tab siguiente"],
+  ["tab.prev", {}, "palette.tab", "palette.previous_tab", "tab anterior"],
+  ["pane.split", { direction: "right" }, "palette.pane", "palette.split_right", "vertical dividir"],
+  ["pane.split", { direction: "down" }, "palette.pane", "palette.split_down", "horizontal dividir"],
+  ["pane.close", {}, "palette.pane", "palette.close_pane", "kill cerrar"],
+  ["pane.zoom", {}, "palette.pane", "palette.zoom_pane", "maximize fullscreen maximizar pantalla completa"],
+  ...["left", "right", "up", "down"].map((d) => ["pane.go", { direction: d }, "palette.pane", () => tr("palette.focus_pane_direction", { direction: tr("palette." + d) }), "move go mover ir enfocar"]),
+  ...["left", "right", "up", "down"].map((d) => ["pane.swap", { direction: d }, "palette.pane", () => tr("palette.swap_pane_direction", { direction: tr("palette." + d) }), "move mover intercambiar"]),
+  ["space.new", {}, "palette.space", "palette.new_space", "workspace nuevo"],
+  ["space.rename", {}, "palette.space", "palette.rename_space", "workspace renombrar"],
+  ["space.close", {}, "palette.space", "palette.close_space", "workspace kill cerrar"],
+  ["space.next", {}, "palette.space", "palette.next_space", "workspace siguiente"],
+  ["space.prev", {}, "palette.space", "palette.previous_space", "workspace anterior"],
+  ["layout.switch", {}, "palette.layout", "palette.next_layout", "look switch apariencia cambiar siguiente"],
+  ["layout.reset", {}, "palette.layout", "palette.reset_layout", "new version default restore herdr's restablecer predeterminado"],
+  ["layout.clone", {}, "palette.layout", "palette.duplicate_layout", "clone copy customize duplicar copiar personalizar"],
+  ["mod.clone", {}, "palette.layout", "palette.duplicate_mod", "clone copy customize duplicar copiar personalizar"],
+  ["terminal.open", {}, "palette.terminal", "palette.new_terminal", "shell nueva"],
+  ["terminal.copy", {}, "palette.terminal", "palette.copy", "clipboard copiar portapapeles"],
+  ["terminal.paste", {}, "palette.terminal", "palette.paste", "clipboard pegar portapapeles"],
+  ["agent.next", {}, "palette.agent", "palette.next_agent", "siguiente"],
+  ["agent.prev", {}, "palette.agent", "palette.previous_agent", "anterior"],
+  ["window.minimize", {}, "palette.window", "palette.minimize_window", "minimizar"],
+  ["window.maximize", {}, "palette.window", "palette.maximize_window", "restore maximizar restaurar"],
+  ["window.close", {}, "palette.window", "palette.close_window", "quit cerrar salir"],
+  ["app.settings", {}, "palette.app", "palette.settings", "preferences options config look font theme sound ajustes preferencias opciones apariencia fuente tema sonido"],
+  ["app.help", {}, "palette.app", "palette.keys", "keybindings shortcuts help atajos ayuda teclado"],
+  ["app.welcome", {}, "palette.app", "palette.welcome", "intro start onboarding inicio introducción"],
+  ["app.whats_new", {}, "palette.app", "palette.what_s_new", "release changes news update cambios actualización"],
+  ["app.reset", {}, "palette.app", "palette.reset_to_the_default_screen", "escape hatch broken restore reset restablecer roto"],
+  ["app.zoom_in", {}, "palette.app", "palette.zoom_in", "bigger font size aumentar fuente tamaño"],
+  ["app.zoom_out", {}, "palette.app", "palette.zoom_out", "smaller font size reducir fuente tamaño"],
+  ["app.zoom_reset", {}, "palette.app", "palette.reset_zoom", "font size restablecer fuente tamaño"],
+  ["app.quit", {}, "palette.app", "palette.quit_herdr", "exit salir cerrar"],
+  ...["graphite", "ink", "moss", "atom-one-dark"].map((n) => ["app.theme", { name: n }, "palette.app", () => tr("palette.theme_name", { name: n.replace(/-/g, " ") }), "colors look colores apariencia"]),
 ];
 
 // Commands that act on something you point at (ids, terminals): not for a list.
@@ -82,10 +83,10 @@ function entries() {
   const mac = win()?.platform === "macos";
   const list = NAMED.filter(([n]) => known.has(n))
     .filter(([n]) => !(mac && n.startsWith("window.")))
-    .map(([name, args, group, title, words]) => ({ name, args, group, title, words }));
+    .map(([name, args, group, title, words]) => ({ name, args, group: tr(group), title: typeof title === "function" ? title() : tr(title), words }));
   for (const l of layouts()) {
     const t = { main: "Herdr", terminals: "Terminals", win98: "Herdr 98" }[l] ?? l.charAt(0).toUpperCase() + l.slice(1);
-    list.push({ name: "layout.switch", args: { name: l }, group: "Layout", title: `Layout: ${t}`, words: `look ${l}` });
+    list.push({ name: "layout.switch", args: { name: l }, group: tr("palette.layout"), title: tr("palette.layout_name", { name: t }), words: `look layout diseño ${l}` });
   }
   // Anything new in the app shows up too, until it gets a better name here.
   const named = new Set(NAMED.map(([n]) => n));
@@ -131,7 +132,7 @@ function fuzzy(q, text) {
 export default class Palette extends View {
   init(_props, cx) {
     this.query = "";
-    this.input = InputState.new({ placeholder: "Type a command…" });
+    this.input = InputState.new({ placeholder: tr("palette.type_a_command") });
     this.input.on("change", (_e, cx) => { this.query = this.input.value(); this.at = 0; cx.notify(); });
     this.input.on("submit", () => this.go(this.rows()[this.at]?.e));
     this.input.focus();
@@ -154,7 +155,7 @@ export default class Palette extends View {
     this.close();
     if (e.name === "mod.clone") {
       openOverlay({ mod: "prompt", kind: "dialog", width: 380, props: {
-        title: "Duplicate mod", hint: "Mod to copy; creates <name>-copy",
+        title: tr("palette.duplicate_mod"), hint: tr("palette.mod_to_copy_creates_name_copy"),
         command: { name: "mod.clone", args: {} },
       } });
     } else {
@@ -168,9 +169,10 @@ export default class Palette extends View {
     const q = this.query.trim().toLowerCase().replace(/\s+/g, "");
     if (!q) {
       const recent = this.recent.map((id) => all.find((e) => e.id === id)).filter(Boolean).slice(0, 5);
-      const rest = GROUPS.slice(1).flatMap((g) => all.filter((e) => e.group === g && !recent.includes(e)));
-      const others = all.filter((e) => !GROUPS.includes(e.group) && !recent.includes(e));
-      return [...recent.map((e) => ({ e, head: "Recent" })), ...[...rest, ...others].map((e) => ({ e, head: e.group }))];
+      const groups = GROUPS.map((g) => tr(g));
+      const rest = groups.slice(1).flatMap((g) => all.filter((e) => e.group === g && !recent.includes(e)));
+      const others = all.filter((e) => !groups.includes(e.group) && !recent.includes(e));
+      return [...recent.map((e) => ({ e, head: tr("palette.recent") })), ...[...rest, ...others].map((e) => ({ e, head: e.group }))];
     }
     const rank = (e) => this.recent.indexOf(e.id);
     return all
@@ -315,7 +317,7 @@ export default class Palette extends View {
                 cx.notify();
               })
               .children(fixed ? list : [v_flex().children(list)])
-          : div().px(16).py(14).text_size(13).text_color(t.dim).child(`Nothing matches "${this.query}". Places are in the picker.`),
+          : div().px(16).py(14).text_size(13).text_color(t.dim).child(tr("palette.nothing_matches_query_places_are", { query: this.query })),
       );
   }
 }

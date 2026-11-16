@@ -1,4 +1,5 @@
 import { test, expect } from "bun:test";
+import { tr } from "./tr-stub";
 import { readFile } from "node:fs/promises";
 
 const source = (await readFile(new URL("../defaults/mods/worktree/main.js", import.meta.url), "utf8"))
@@ -35,7 +36,7 @@ function harness(focusedMachine: string | null = null, raw: string | null = null
   const executions: any[] = [];
   const globals = {
     View: class {}, div: element, v_flex: element, h_flex: element,
-    Input: { new: element }, Scrollbar: { vertical: element }, theme: () => ({}),
+    tr, Input: { new: element }, Scrollbar: { vertical: element }, theme: () => ({}),
     appHome: () => "/app", readTextFile: async () => raw,
     spaces: () => { reads.spaces++; return structuredClone(spaceList); },
     panes: () => { reads.panes++; return structuredClone(paneList); },

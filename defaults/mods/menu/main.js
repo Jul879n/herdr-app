@@ -5,7 +5,7 @@
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { run, props, closeOverlay, openOverlay, theme, keys, terminals, spaces, panes, exec } from "herdr";
+import { run, props, closeOverlay, openOverlay, theme, keys, terminals, spaces, panes, exec, tr } from "herdr";
 
 // Where a space is now: its first terminal's live folder, else where it was made.
 function place(s) {
@@ -38,43 +38,43 @@ function items(p, git) {
       return [
         ...(inTab
           ? [
-              ["Split right", "pane.split", { direction: "right", pane: tg.pane }],
-              ["Split down", "pane.split", { direction: "down", pane: tg.pane }],
-              ["Zoom", "pane.zoom", { pane: tg.pane }],
+              [tr("menu.split_right"), "pane.split", { direction: "right", pane: tg.pane }],
+              [tr("menu.split_down"), "pane.split", { direction: "down", pane: tg.pane }],
+              [tr("menu.zoom"), "pane.zoom", { pane: tg.pane }],
             ]
           : []),
         ...(term
           ? [
               toProgram
-                ? ["Use Herdr right-click menu", "terminal.right_click", { terminal: term.address, to: "menu" }]
-                : ["Send right-clicks to pane", "terminal.right_click", { terminal: term.address, to: "program" }],
+                ? [tr("menu.use_herdr_right_click_menu"), "terminal.right_click", { terminal: term.address, to: "menu" }]
+                : [tr("menu.send_right_clicks_to_pane"), "terminal.right_click", { terminal: term.address, to: "program" }],
             ]
           : []),
-        ...(parent ? [[`Send back to ${parent.name || parent.address}`, "terminal.park", { terminal: term.address }]] : []),
-        ...(inTab ? [["Close pane", "pane.close", { pane: tg.pane }]] : []),
+        ...(parent ? [[tr("menu.send_back_to_name", { name: parent.name || parent.address }), "terminal.park", { terminal: term.address }]] : []),
+        ...(inTab ? [[tr("menu.close_pane"), "pane.close", { pane: tg.pane }]] : []),
       ];
     }
     case "tab":
       return [
-        ["Rename", "tab.rename", { id: tg.id }],
-        ["New tab", "tab.new", { space: tg.space }],
-        ["Close", "tab.close", { id: tg.id }],
+        [tr("menu.rename"), "tab.rename", { id: tg.id }],
+        [tr("menu.new_tab"), "tab.new", { space: tg.space }],
+        [tr("menu.close"), "tab.close", { id: tg.id }],
       ];
     case "space":
       return [
-        ["Rename", "space.rename", { id: tg.id }],
-        ...(git ? [["New worktree", "worktree", { space: tg.id, action: "new" }], ["Open worktree", "worktree", { space: tg.id, action: "open" }]] : []),
-        ...(git === "linked" ? [["Remove worktree", "worktree", { space: tg.id, action: "remove" }]] : []),
-        ["Close", "space.close", { id: tg.id }],
+        [tr("menu.rename"), "space.rename", { id: tg.id }],
+        ...(git ? [[tr("menu.new_worktree"), "worktree", { space: tg.id, action: "new" }], [tr("menu.open_worktree"), "worktree", { space: tg.id, action: "open" }]] : []),
+        ...(git === "linked" ? [[tr("menu.remove_worktree"), "worktree", { space: tg.id, action: "remove" }]] : []),
+        [tr("menu.close"), "space.close", { id: tg.id }],
       ];
     default:
       return [
-        ["New space", "space.new", {}],
-        ["Keybinds", "app.help", {}],
-        ["Theme: graphite", "app.theme", { name: "graphite" }],
-        ["Theme: ink", "app.theme", { name: "ink" }],
-        ["Theme: moss", "app.theme", { name: "moss" }],
-        ["Theme: atom one dark", "app.theme", { name: "atom-one-dark" }],
+        [tr("menu.new_space"), "space.new", {}],
+        [tr("menu.keybinds"), "app.help", {}],
+        [tr("menu.theme_graphite"), "app.theme", { name: "graphite" }],
+        [tr("menu.theme_ink"), "app.theme", { name: "ink" }],
+        [tr("menu.theme_moss"), "app.theme", { name: "moss" }],
+        [tr("menu.theme_atom_one_dark"), "app.theme", { name: "atom-one-dark" }],
       ];
   }
 }

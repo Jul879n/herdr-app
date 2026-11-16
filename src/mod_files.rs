@@ -18,7 +18,7 @@ pub fn read(path: &Path) -> Result<Option<String>, String> {
         .read_to_string(&mut text)
         .map_err(|e| e.to_string())?;
     if text.len() as u64 > LIMIT {
-        return Err("Text file exceeds 1 MiB".into());
+        return Err(crate::i18n::t("rs.mod_files.text_file_exceeds_1_mib").into());
     }
     Ok(Some(text))
 }
@@ -26,15 +26,15 @@ pub fn read(path: &Path) -> Result<Option<String>, String> {
 fn write(path: &Path, text: &str, expected: Option<&str>) -> Result<(), String> {
     let _guard = WRITES.lock().map_err(|e| e.to_string())?;
     if text.len() as u64 > LIMIT {
-        return Err("Text file exceeds 1 MiB".into());
+        return Err(crate::i18n::t("rs.mod_files.text_file_exceeds_1_mib").into());
     }
     if read(path)?.as_deref() != expected {
         return Err(
-            "The file changed outside Herdr. Reload before saving; your draft is still here."
+            crate::i18n::t("rs.mod_files.the_file_changed_outside_herdr")
                 .into(),
         );
     }
-    let parent = path.parent().ok_or("File needs a parent directory")?;
+    let parent = path.parent().ok_or_else(|| crate::i18n::t("rs.mod_files.file_needs_a_parent_directory"))?;
     std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     if expected.is_none() {
         let mut f = std::fs::OpenOptions::new()
@@ -67,7 +67,7 @@ fn write(path: &Path, text: &str, expected: Option<&str>) -> Result<(), String> 
         .map_err(|e| e.to_string())?;
         f.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
         if read(&target)?.as_deref() != expected {
-            return Err("The file changed while saving. Reload before saving.".into());
+            return Err(crate::i18n::t("rs.mod_files.the_file_changed_while_saving").into());
         }
         std::fs::rename(&temp, &target).map_err(|e| e.to_string())
     })();

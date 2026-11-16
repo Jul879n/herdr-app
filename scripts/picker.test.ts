@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { tr } from "./tr-stub";
 import { readFile } from "node:fs/promises";
 
 // Exercise the shipped view and its event handlers without a window or a core.
@@ -27,7 +28,7 @@ let closed = 0;
 const values: Record<string, any> = {
   View: class {}, div: element, svg: element, v_flex: element, h_flex: element,
   Input: { new: element }, InputState: { new: () => ({ handlers: {} as Record<string, any>, on(name: string, handler: any) { this.handlers[name] = handler; }, focus() {} }) },
-  agents: () => [], spaces: () => testSpaces, terminals: () => [], theme: () => ({ hover: "hover" }),
+  agents: () => [], spaces: () => testSpaces, terminals: () => [], tr, theme: () => ({ hover: "hover" }),
   settings: () => ({ zoom: 1.2 }), props: () => ({}), shared: () => ({}),
   setShared() {}, closeOverlay() { closed++; }, openOverlay() {}, run(...args: unknown[]) { commands.push(args); }, hc() {},
 };

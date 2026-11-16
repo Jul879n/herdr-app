@@ -138,7 +138,7 @@ fn launch_failure(record: &Value, output: &str) -> Option<String> {
     }
     let lines = output.lines().filter(|l| !l.trim().is_empty()).collect::<Vec<_>>();
     let tail = lines[lines.len().saturating_sub(5)..].join("\n");
-    Some(if tail.is_empty() { format!("Exit code {code}") } else { format!("Exit code {code}\n{tail}") })
+    Some(if tail.is_empty() { crate::i18n::tf("rs.window.exit_code_code", &[("code", &code.to_string())]) } else { crate::i18n::tf("rs.window.exit_code_code_tail", &[("code", &code.to_string()), ("tail", &tail)]) })
 }
 
 /// The shipped layouts (defaults/layouts): `main` is Herdr's window (spaces
@@ -445,6 +445,8 @@ pub struct AppWindow {
     changing_terminals: HashSet<String>,
     /// Closed terminals stay excluded until kill completes and a listing drops them.
     closing_terminals: HashMap<String, bool>,
+    /// Terminals whose lost agent was already started again (this run).
+    resumed: HashSet<String>,
     pending_terminals: std::collections::BTreeMap<String, PendingTerminalChange>,
     /// Each machine owns a document; the empty key is this core.
     documents: std::collections::BTreeMap<String, crate::mirror_sync::Slot>,
@@ -552,6 +554,7 @@ impl AppWindow {
             draining: false,
             changing_terminals: HashSet::new(),
             closing_terminals: HashMap::new(),
+            resumed: HashSet::new(),
             pending_terminals: Default::default(),
             documents: {
                 let mut local = crate::mirror_sync::Slot::default();
@@ -620,7 +623,7 @@ impl AppWindow {
         w.apply_look(window, cx);
         w.show_layout_notes(window, cx);
         if let (Some(n), false) = (&name, gone.is_empty()) {
-            let note = json!({ "title": format!("{n} needs mods that aren't here"), "body": format!("Showing Herdr instead. Missing: {}. Your {n} layout file is still there.", gone.join(", ")), "level": "info", "timeout": 12000 });
+            let note = json!({ "title": crate::i18n::tf("rs.window.n_needs_mods_that_aren_t", &[("n", &n.to_string())]), "body": crate::i18n::tf("rs.window.showing_herdr_instead_missing_missing", &[("missing", &gone.join(", ")), ("n", &n.to_string())]), "level": "info", "timeout": 12000 });
             w.open_overlay(mods::new_overlay_id(), json!({ "kind": "toast", "notification": note }), window, cx);
         }
 
@@ -817,6 +820,12 @@ impl AppWindow {
         w
     }
 
+    /// How many agents show as working now.
+    fn agents_working(&self) -> usize {
+        let m = &self.model;
+        m.agents.iter().filter(|(a, g)| self.live.contains_key(*a) && m.status(a).is_some() && g.word.as_deref() == Some("working")).count()
+    }
+
     /// What telemetry.rs counts: how much is open, never what's in it.
     fn observe(&self) {
         if !crate::telemetry::collecting() {
@@ -826,7 +835,7 @@ impl AppWindow {
         let agents: Vec<&model::Agent> = m.agents.iter().filter(|(a, _)| self.live.contains_key(*a) && m.status(a).is_some()).map(|(_, a)| a).collect();
         crate::telemetry::observe(crate::telemetry::Observation {
             foreground: self.window_active,
-            agents_working: agents.iter().filter(|a| a.word.as_deref() == Some("working")).count(),
+            agents_working: self.agents_working(),
             agents: agents.iter().map(|a| a.app.clone()).collect(),
             spaces: m.spaces.len(),
             tabs: m.spaces.iter().map(|p| p.tabs.len()).sum(),
@@ -1173,7 +1182,7 @@ impl AppWindow {
     /// What installing layouts kept of the person's own, as toasts.
     fn show_layout_notes(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         for clone in mods::take_sync_notes() {
-            let n = json!({ "title": format!("Your edits are in {clone}"), "body": "Herdr's own layouts and mods can't be changed: clone one to make it yours.", "level": "info", "timeout": 12000 });
+            let n = json!({ "title": crate::i18n::tf("rs.window.your_edits_are_in_clone", &[("clone", &clone.to_string())]), "body": crate::i18n::t("rs.window.herdr_s_own_layouts_and_mods"), "level": "info", "timeout": 12000 });
             self.open_overlay(mods::new_overlay_id(), json!({ "kind": "toast", "notification": n }), window, cx);
         }
     }
@@ -2064,7 +2073,7 @@ impl AppWindow {
                     if notify {
                         tracing::warn!("layout on {machine:?} unavailable: {error}");
                         slot.notified_error = Some(error.clone());
-                        self.layout_notice("Layout unavailable", &format!("{}: {error}", if machine.is_empty() { "This machine" } else { &machine }), window, cx);
+                        self.layout_notice(&crate::i18n::t("rs.window.layout_unavailable"), &format!("{}: {error}", if machine.is_empty() { crate::i18n::t("rs.window.this_machine") } else { machine.to_string() }), window, cx);
                     }
                     continue;
                 }
@@ -2081,7 +2090,7 @@ impl AppWindow {
                 changed = true;
             }
             if conflict {
-                self.layout_notice("Layout changed elsewhere", "The other screen's layout is shown.", window, cx);
+                self.layout_notice(&crate::i18n::t("rs.window.layout_changed_elsewhere"), &crate::i18n::t("rs.window.the_other_screen_s_layout_is"), window, cx);
             }
         }
         if let Some(machines) = machines {
@@ -2190,6 +2199,7 @@ impl AppWindow {
             }
         }
         self.track_folders(cx);
+        self.tend_agents(cx);
         for t in self.terms.values() {
             if self.live.get(&t.address).is_some_and(|r| r["pid"].as_u64().is_some()) {
                 t.view.update(cx, |v, cx| v.reattach_if_needed(self.core.clone(), cx));
@@ -2201,6 +2211,99 @@ impl AppWindow {
             self.sync(window, cx);
         } else if listed {
             self.publish(cx);
+        }
+    }
+
+    /// Remembers which agent runs in each terminal (a label the core keeps, so it
+    /// outlives a reboot) and starts it again, picking up its conversation, when
+    /// the terminal turns up lost.
+    fn tend_agents(&mut self, cx: &mut Context<Self>) {
+        if QUITTING.load(std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
+        let enabled = settings::get().resume_agents;
+        let mut work: Vec<(String, ResumeAction, Option<String>)> = Vec::new();
+        for (addr, rec) in &self.live {
+            if self.model.pane_of(addr).is_none() {
+                continue;
+            }
+            let app = rec.pointer("/report/app").and_then(Value::as_str).filter(|s| !s.is_empty());
+            let key = rec.pointer("/foreground/argv").and_then(Value::as_array).and_then(|a| {
+                let argv: Vec<String> = a.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect();
+                crate::programs::agent_key(app, &argv)
+            });
+            let action = resume_action(rec, key.as_deref(), enabled, self.resumed.contains(addr));
+            if action != ResumeAction::Nothing {
+                let current = rec.pointer("/labels/herdr.agent").and_then(Value::as_str).unwrap_or("").to_owned();
+                work.push((addr.clone(), action, Some(current)));
+            }
+        }
+        for (addr, action, current) in work {
+            let pid = self.live.get(&addr).and_then(|r| r["pid"].as_u64()).map(|n| n.to_string()).unwrap_or_default();
+            let (labels, send) = match action {
+                ResumeAction::Nothing => continue,
+                ResumeAction::Label(k) => {
+                    // The agent runs again: a later loss may be resumed anew.
+                    self.resumed.remove(&addr);
+                    (json!({ "herdr.agent": k, "herdr.agent_pid": pid }), None)
+                }
+                ResumeAction::Clear => (json!({ "herdr.agent": "", "herdr.agent_pid": "" }), None),
+                ResumeAction::Resume => match crate::programs::launch(current.as_deref().unwrap_or(""), true) {
+                    Some(argv) => {
+                        self.resumed.insert(addr.clone());
+                        (json!({ "herdr.agent": "", "herdr.agent_pid": "" }), Some(sh_line(&argv)))
+                    }
+                    None => {
+                        tracing::debug!("{addr}: {:?} has no resume arguments any more", current);
+                        (json!({ "herdr.agent": "", "herdr.agent_pid": "" }), None)
+                    }
+                },
+            };
+            let core = self.core.clone();
+            let terminal = addr.clone();
+            match send {
+                // A lost terminal answers "waiting for its new shell" for a moment:
+                // keep the labels and ask again on a later tick until the text goes in.
+                Some(text) => {
+                    cx.spawn(async move |this, cx| {
+                        let sent = cx
+                            .background_executor()
+                            .spawn({
+                                let (core, terminal) = (core.clone(), terminal.clone());
+                                async move { core.call("terminal.send", json!({ "terminal": terminal, "text": text })) }
+                            })
+                            .await;
+                        let ok = sent.is_ok();
+                        if ok {
+                            let (core, terminal) = (core.clone(), terminal.clone());
+                            cx.background_executor()
+                                .spawn(async move {
+                                    if let Err(e) = core.call("terminal.label", json!({ "terminal": terminal, "labels": labels })) {
+                                        tracing::warn!("agent label: {e:#}");
+                                    }
+                                })
+                                .await;
+                        } else if let Err(e) = sent {
+                            tracing::debug!("resume agent (will retry): {e:#}");
+                        }
+                        let _ = this.update(cx, |this, _| {
+                            if !ok {
+                                this.resumed.remove(&addr);
+                            }
+                        });
+                    })
+                    .detach();
+                }
+                None => {
+                    cx.background_executor()
+                        .spawn(async move {
+                            if let Err(e) = core.call("terminal.label", json!({ "terminal": terminal, "labels": labels })) {
+                                tracing::warn!("agent label: {e:#}");
+                            }
+                        })
+                        .detach();
+                }
+            }
         }
     }
 
@@ -2226,7 +2329,7 @@ impl AppWindow {
         let name = rec
             .and_then(|r| r.get("name").and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_owned))
             .or_else(|| app.as_deref().map(crate::programs::name))
-            .unwrap_or_else(|| "An agent".into());
+            .unwrap_or_else(|| crate::i18n::t("rs.window.an_agent").into());
         // A sub-agent lives where its top agent does.
         let home = self.root_agent(addr);
         let place = self.model.pane_of(&home).and_then(|pane| {
@@ -2234,8 +2337,8 @@ impl AppWindow {
             Some(format!("{} / {}", self.model.space_name(p, &self::home()), Model::tab_name(p, c)))
         });
         let (title, level) = match alert {
-            model::Alert::Blocked => (format!("{name} needs you"), "error"),
-            model::Alert::Done => (format!("{name} finished"), "info"),
+            model::Alert::Blocked => (crate::i18n::tf("rs.window.name_needs_you", &[("name", &name)]), "error"),
+            model::Alert::Done => (crate::i18n::tf("rs.window.name_finished", &[("name", &name)]), "info"),
         };
         let notification = json!({
             "title": title, "body": place, "level": level,
@@ -2459,7 +2562,7 @@ impl AppWindow {
             }).await;
             if let Some(body) = failure {
                 let _ = this.update_in(cx, |this, window, cx| {
-                    this.open_overlay(mods::new_overlay_id(), json!({"kind":"toast", "notification":{"title":"Terminal failed to start", "body":body, "level":"error"}}), window, cx);
+                    this.open_overlay(mods::new_overlay_id(), json!({"kind":"toast", "notification":{"title":crate::i18n::t("rs.window.terminal_failed_to_start"), "body":body, "level":"error"}}), window, cx);
                 });
             }
         }).detach();
@@ -2762,7 +2865,7 @@ impl AppWindow {
         self.changing_terminals.remove(&address);
         if let Err(error) = result {
             tracing::error!("terminal change for {address} failed: {error}");
-            if !self.draining { self.layout_notice("Could not change terminal pane", &error, window, cx); }
+            if !self.draining { self.layout_notice(&crate::i18n::t("rs.window.could_not_change_terminal_pane"), &error, window, cx); }
             return;
         }
         match change {
@@ -2901,7 +3004,7 @@ impl AppWindow {
     }
 
     fn command_error(&mut self, name: &str, error: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let spec = json!({"kind":"toast", "notification":{"title":format!("{name} failed"),"body":error,"level":"error"}});
+        let spec = json!({"kind":"toast", "notification":{"title":crate::i18n::tf("rs.window.name_failed", &[("name", name)]),"body":error,"level":"error"}});
         self.open_overlay(mods::new_overlay_id(), spec, window, cx);
     }
 
@@ -2992,13 +3095,13 @@ impl AppWindow {
                 let id = Self::owned(&args, "id").or_else(|| self.model.active.clone());
                 let current = id.as_deref().and_then(|i| self.model.space(i)).map(|p| p.name.clone());
                 args["id"] = json!(id);
-                ("rename space", "empty: named after its folder", current)
+                (crate::i18n::t("rs.window.rename_space"), crate::i18n::t("rs.window.empty_named_after_its_folder"), current)
             }
             _ => {
                 let id = Self::owned(&args, "id").or_else(|| self.model.active_tab().map(|c| c.id.clone()));
                 let current = id.as_deref().and_then(|i| self.model.tab(i)).map(|c| c.name.clone());
                 args["id"] = json!(id);
-                ("rename tab", "empty: its number", current)
+                (crate::i18n::t("rs.window.rename_tab"), crate::i18n::t("rs.window.empty_its_number"), current)
             }
         };
         // Once: a second rename press closes the open prompt instead of stacking another.
@@ -3029,8 +3132,8 @@ impl AppWindow {
                         return self.fail("space.close ends its terminals: pass confirmed: true");
                     }
                     let panes: usize = p.tabs.iter().map(|c| c.root.panes().len()).sum();
-                    let detail = format!("{} \u{2014} {} tabs, {} terminals", self.model.space_name(p, &home()), p.tabs.len(), panes);
-                    self.confirm("Close space?", &detail, "space.close", json!({ "id": id, "confirmed": true }), window, cx);
+                    let detail = crate::i18n::tf("rs.window.name_tabs_tabs_terminals", &[("name", &self.model.space_name(p, &home())), ("tabs", &p.tabs.len().to_string()), ("terminals", &panes.to_string())]);
+                    self.confirm(&crate::i18n::t("rs.window.close_space"), &detail, "space.close", json!({ "id": id, "confirmed": true }), window, cx);
                     return;
                 }
                 let addrs = self.model.remove_space(&id);
@@ -3577,6 +3680,24 @@ impl AppWindow {
                 });
                 self.write_person(|p| p.zoom = zoom, window, cx);
             }
+            "app.keep_awake" => {
+                use crate::awake::Mode;
+                if cfg!(windows) {
+                    return self.fail("keep awake isn't available on Windows");
+                }
+                let mode = match Self::arg(a, "mode") {
+                    None => match settings::get().keep_awake {
+                        Mode::Off => Mode::Auto,
+                        Mode::Auto => Mode::On,
+                        Mode::On => Mode::Off,
+                    },
+                    Some("on") => Mode::On,
+                    Some("auto") => Mode::Auto,
+                    Some("off") => Mode::Off,
+                    Some(_) => return self.fail("mode must be on, auto or off"),
+                };
+                self.write_person(|p| p.keep_awake = mode, window, cx);
+            }
             "app.quit" => cx.quit(),
             "app.update" => {
                 match crate::update::apply() {
@@ -4009,6 +4130,7 @@ impl AppWindow {
     // ---- mods on disk ----------------------------------------------------
 
     fn poll(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        crate::awake::update(settings::get().keep_awake, self.agents_working() > 0);
         self.flush_documents(false, window, cx);
         let ready = Self::update_label();
         if ready != self.update_ready {
@@ -4872,6 +4994,53 @@ fn recheck(last: Option<&FolderCheck>, cwd: &str, busy: bool, active: bool) -> b
 
 /// Set once the app starts quitting, the OS ending the session included: the
 /// saved layout stays as it was.
+#[derive(Debug, PartialEq)]
+enum ResumeAction {
+    /// Remember which agent runs here.
+    Label(String),
+    /// Its terminal was lost: start the agent again, resuming.
+    Resume,
+    /// It ended on its own, or the loss was handled: forget it.
+    Clear,
+    Nothing,
+}
+
+/// What to do about one terminal's remembered agent (`herdr.agent`).
+/// `key`: the resumable agent in its foreground now; `already`: resumed this run.
+fn resume_action(rec: &Value, key: Option<&str>, enabled: bool, already: bool) -> ResumeAction {
+    let label = |name: &str| rec.pointer(&format!("/labels/{name}")).and_then(Value::as_str).unwrap_or("");
+    let current = label("herdr.agent");
+    let pid = rec["pid"].as_u64().map(|n| n.to_string()).unwrap_or_default();
+    match key {
+        Some(k) if k != current || label("herdr.agent_pid") != pid => ResumeAction::Label(k.to_owned()),
+        Some(_) => ResumeAction::Nothing,
+        None if current.is_empty() => ResumeAction::Nothing,
+        // Core hasn't said what runs in it yet (a terminal being recovered).
+        None if rec.pointer("/foreground/argv").is_none() => ResumeAction::Nothing,
+        // The terminal's process was replaced since the agent ran in it: core
+        // lost it (reboot, crash) and gave it a fresh shell. An agent that ended
+        // on its own leaves the same process behind.
+        // Its resume is being sent (or retried): leave the labels for that.
+        None if already => ResumeAction::Nothing,
+        None if enabled && label("herdr.agent_pid") != pid => ResumeAction::Resume,
+        None => ResumeAction::Clear,
+    }
+}
+
+/// argv as one shell line: arguments with anything unusual in single quotes.
+fn sh_line(argv: &[String]) -> String {
+    argv.iter()
+        .map(|a| {
+            if !a.is_empty() && a.chars().all(|c| c.is_ascii_alphanumeric() || "_./=:-".contains(c)) {
+                a.clone()
+            } else {
+                format!("'{}'", a.replace('\'', "'\\''"))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 pub static QUITTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// The repo a folder is in (a worktree counts as its main checkout's), else the
@@ -5335,6 +5504,31 @@ fn reconcile_core_update_error(dismissed: &mut Option<String>, core: &crate::upd
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn resume_action_labels_resumes_and_clears() {
+        use super::{ResumeAction::*, resume_action};
+        use serde_json::json;
+        let labeled = |pid: &str| json!({ "pid": 7, "foreground": { "argv": ["zsh"] }, "labels": { "herdr.agent": "claude", "herdr.agent_pid": pid } });
+        assert_eq!(resume_action(&json!({ "pid": 7 }), Some("claude"), true, false), Label("claude".into()));
+        assert_eq!(resume_action(&labeled("7"), Some("claude"), true, false), Nothing);
+        // The agent runs in a process that isn't the one it was labeled in.
+        assert_eq!(resume_action(&labeled("3"), Some("claude"), true, false), Label("claude".into()));
+        assert_eq!(resume_action(&labeled("3"), None, true, false), Resume);
+        assert_eq!(resume_action(&labeled("7"), None, true, false), Clear);
+        assert_eq!(resume_action(&labeled("3"), None, false, false), Clear);
+        // In flight: the labels stay until the send went through.
+        assert_eq!(resume_action(&labeled("3"), None, true, true), Nothing);
+        assert_eq!(resume_action(&json!({ "pid": 7 }), None, true, false), Nothing);
+        let recovering = json!({ "pid": 7, "labels": { "herdr.agent": "claude", "herdr.agent_pid": "3" } });
+        assert_eq!(resume_action(&recovering, None, true, false), Nothing);
+    }
+
+    #[test]
+    fn sh_line_quotes_what_the_shell_would_split() {
+        let line = super::sh_line(&["claude".into(), "--continue".into(), "a b".into(), "it's".into()]);
+        assert_eq!(line, "claude --continue 'a b' 'it'\\''s'");
+    }
+
     use gpui::{div, point, px, size, Context, IntoElement, Render, TestAppContext, Window};
     use gpui::prelude::*;
 

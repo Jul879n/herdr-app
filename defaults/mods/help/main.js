@@ -3,15 +3,15 @@
 
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { keys, props, closeOverlay, theme } from "herdr";
+import { keys, props, closeOverlay, theme, tr } from "herdr";
 
 const GROUPS = [
-  ["spaces", /^space\./],
-  ["tabs", /^tab\./],
-  ["panes", /^pane\./],
-  ["agents", /^agent\./],
+  ["help.spaces", /^space\./],
+  ["help.tabs", /^tab\./],
+  ["help.panes", /^pane\./],
+  ["help.agents", /^agent\./],
   ["terminal", /^terminal\.|^send:/],
-  ["window", /./],
+  ["help.window", /./],
 ];
 
 function label(action) {
@@ -24,7 +24,7 @@ function label(action) {
 export default class Help extends View {
   init(_props, cx) {
     this.filter = "";
-    this.input = InputState.new({ placeholder: "Type to filter…" });
+    this.input = InputState.new({ placeholder: tr("help.type_to_filter") });
     this.input.on("change", (_e, cx) => { this.filter = this.input.value(); cx.notify(); });
     this.input.focus();
     cx.timer.after(600, () => this.input.focus());
@@ -57,7 +57,7 @@ export default class Help extends View {
           .h(22)
           .items_center()
           .justify_between()
-          .child(div().text_size(15).font_semibold().text_color(t.foreground).child("Keybinds"))
+          .child(div().text_size(15).font_semibold().text_color(t.foreground).child(tr("help.keybinds")))
           .child(div().id("help-esc").px(6).py(2).rounded(5).text_size(11).text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click(() => closeOverlay(props().overlay)).child("Esc")),
       )
       .child(Input.new(this.input).h(36).flex_none().px(10).rounded(9).border_1().border_color(t.accent).bg(t.background).text_size(12.8).text_color(t.foreground))
@@ -72,7 +72,7 @@ export default class Help extends View {
             groups.map(([name, rows]) =>
               v_flex()
                 .gap(2)
-                .child(div().text_size(11.5).font_medium().text_color(t.dim).child(name))
+                .child(div().text_size(11.5).font_medium().text_color(t.dim).child(tr(name)))
                 .children(
                   rows.map((k) =>
                     h_flex()

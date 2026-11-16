@@ -5,19 +5,19 @@
 
 import { div, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { agents, run, shared, setShared, placement } from "herdr";
+import { tr, agents, run, shared, setShared, placement } from "herdr";
 import { C, ASSETS, unit, root, button, label, sfx, own } from "./kit.js";
 
 const TIPS = [
-  "It looks like you're herding agents.\n\nDid you know? Ctrl+Esc opens the Start menu.",
-  "Click a tab's taskbar button while it's\nshown to minimize it (Herdr settles it).\nClick again to bring it back.",
-  "Ctrl+Shift+Esc opens Close Program:\nevery terminal Herdr runs, and End Task.",
-  "Right-click a folder on the desktop to\nrename or close that space.",
-  "Waiting on an agent? Mines is on\nthe desktop. I won't tell anyone.",
-  "Double-click a window's title bar to\nmaximize it. Double-click again to restore.",
-  "Start > Run... opens any command line\nin a new window, like it's 1998.",
-  "Shut Down > Restart in DOS mode\ntakes you to the Terminals layout.",
-  "Log Off takes you back to Herdr's\nnormal layout. I'll miss you.",
+  "win98.it_looks_like_you_re_herding",
+  "win98.click_a_tab_s_taskbar_button",
+  "win98.ctrl_shift_esc_opens_close_program_every",
+  "win98.right_click_a_folder_on_the",
+  "win98.waiting_on_an_agent_mines",
+  "win98.double_click_a_window_s_title_bar",
+  "win98.start_run_opens_any",
+  "win98.shut_down_restart_in",
+  "win98.log_off_takes_you_back",
 ];
 
 export default class Clippy {
@@ -41,24 +41,24 @@ export default class Clippy {
     const right = placement()?.edge !== "left";
     let balloon = null;
     if (a) {
-      const name = a.program?.name ?? a.app ?? "Your agent";
+      const name = a.program?.name ?? a.app ?? tr("win98.your_agent");
       const where = `'${a.space_name} \\ ${a.tab_name}'`;
       const text =
         a.status === "blocked"
-          ? `It looks like ${name} in\n${where} is waiting for you.\n\nWould you like help?`
-          : `It looks like ${name} finished\nin ${where}.\n\nWant to see what it did?`;
+          ? tr("win98.it_looks_like_name_in", { name, where })
+          : tr("win98.it_looks_like_name_finished", { name, where });
       balloon = this.balloon(u, text, [
-        ["Take me there", () => {
+        [tr("win98.take_me_there"), () => {
           run("agent.focus", { terminal: a.address });
           this.dismissed.add(`${a.address}:${a.status}`);
         }],
-        ["Not now", () => this.dismissed.add(`${a.address}:${a.status}`)],
+        [tr("win98.not_now"), () => this.dismissed.add(`${a.address}:${a.status}`)],
       ]);
     } else if (this.tip !== null) {
-      balloon = this.balloon(u, TIPS[this.tip % TIPS.length], [
-        ["Next tip", () => (this.tip = (this.tip + 1) % TIPS.length)],
-        ["Close", () => (this.tip = null)],
-        ["Hide me", () => setShared("win98.clippy", "off")],
+      balloon = this.balloon(u, tr(TIPS[this.tip % TIPS.length]), [
+        [tr("win98.next_tip"), () => (this.tip = (this.tip + 1) % TIPS.length)],
+        [tr("win98.close"), () => (this.tip = null)],
+        [tr("win98.hide_me"), () => setShared("win98.clippy", "off")],
       ]);
     }
     // Clean the dismissed list once their agents moved on.

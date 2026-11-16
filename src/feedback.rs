@@ -46,13 +46,13 @@ pub fn attach(bytes: &[u8]) -> Result<String, String> {
     let (bytes, ext) = match sniff(bytes) {
         Some(ext) => (bytes.to_vec(), ext),
         None => {
-            let img = image::load_from_memory(bytes).map_err(|_| "That isn't an image Herdr can read.".to_owned())?;
+            let img = image::load_from_memory(bytes).map_err(|_| crate::i18n::t("rs.feedback.that_isn_t_an_image_herdr"))?;
             let mut png = std::io::Cursor::new(Vec::new());
-            img.write_to(&mut png, image::ImageFormat::Png).map_err(|_| "Couldn't convert that image.".to_owned())?;
+            img.write_to(&mut png, image::ImageFormat::Png).map_err(|_| crate::i18n::t("rs.feedback.couldn_t_convert_that_image"))?;
             (png.into_inner(), "png")
         }
     };
-    if bytes.len() > MAX_IMAGE_BYTES { return Err("That image is over 5 MB.".into()); }
+    if bytes.len() > MAX_IMAGE_BYTES { return Err(crate::i18n::t("rs.feedback.that_image_is_over_5").into()); }
     let dir = shots_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or_default();
@@ -69,7 +69,7 @@ pub fn attach_files(paths: &[PathBuf]) -> Vec<Value> {
                 Ok(path) => json!({ "path": path }),
                 Err(error) => json!({ "error": error }),
             },
-            Err(_) => json!({ "error": "Couldn't read that file." }),
+            Err(_) => json!({ "error": crate::i18n::t("rs.feedback.couldn_t_read_that_file") }),
         }
     }).collect()
 }
@@ -85,7 +85,7 @@ pub fn clear_shots() {
 /// A path `attach` returned, checked again before it leaves the machine.
 fn shot_file(rel: &str) -> Result<PathBuf, String> {
     let name = rel.strip_prefix("data/frame-feedback/").filter(|n| n.starts_with("shot-") && !n.contains(['/', '\\']))
-        .ok_or("Unknown screenshot.")?;
+        .ok_or_else(|| crate::i18n::t("rs.feedback.unknown_screenshot"))?;
     let path = shots_dir().join(name);
     let bytes = std::fs::read(&path).map_err(|_| "A screenshot is gone. Remove it and add it again.".to_owned())?;
     if bytes.len() > MAX_IMAGE_BYTES || sniff(&bytes).is_none() { return Err("A screenshot isn't a PNG or JPEG under 5 MB.".into()); }
@@ -96,15 +96,15 @@ pub fn available() -> bool { endpoint().is_some() }
 
 fn validate(body: &Value) -> Result<(), String> {
     let message = body["message"].as_str().unwrap_or_default();
-    if message.is_empty() { return Err("Write a message first.".into()); }
-    if message.encode_utf16().count() > 4000 { return Err("Keep the message to 4000 characters.".into()); }
+    if message.is_empty() { return Err(crate::i18n::t("rs.feedback.write_a_message_first").into()); }
+    if message.encode_utf16().count() > 4000 { return Err(crate::i18n::t("rs.feedback.keep_the_message_to_4000").into()); }
     if let Some(email) = body["email"].as_str() {
         let valid = email.split_once('@').is_some_and(|(local, domain)| {
             !local.is_empty() && domain.split_once('.').is_some_and(|(a, b)| !a.is_empty() && !b.is_empty())
                 && !domain.contains('@')
         });
         if email.len() > 254 || !valid || email.chars().any(char::is_whitespace) {
-            return Err("Enter a plain email address, or leave it blank.".into());
+            return Err(crate::i18n::t("rs.feedback.enter_a_plain_email_address").into());
         }
     }
     Ok(())
@@ -113,17 +113,17 @@ fn validate(body: &Value) -> Result<(), String> {
 pub async fn send(body: Value, shots: Vec<String>) -> Result<(), String> {
     validate(&body)?;
     if shots.len() > MAX_IMAGES || body["images"].as_u64() != Some(shots.len() as u64) {
-        return Err("Up to 3 screenshots.".into());
+        return Err(crate::i18n::t("rs.feedback.up_to_3_screenshots").into());
     }
     let files = shots.iter().map(|s| shot_file(s)).collect::<Result<Vec<_>, _>>()?;
-    let url = endpoint().ok_or("This build was made from source and doesn't send feedback. Use a release build.")?;
+    let url = endpoint().ok_or_else(|| crate::i18n::t("rs.feedback.this_build_was_made_from"))?;
     let (tx, rx) = async_channel::bounded(1);
     std::thread::spawn(move || {
         let result = post(&url, &body.to_string(), &files);
         if result.is_ok() { clear_shots(); }
         let _ = tx.send_blocking(result);
     });
-    rx.recv().await.map_err(|_| "The feedback request was lost.".to_owned())?
+    rx.recv().await.map_err(|_| crate::i18n::t("rs.feedback.the_feedback_request_was_lost"))?
 }
 
 /// Text alone goes as JSON (what every version sends); with screenshots, as a
@@ -132,7 +132,7 @@ fn post(url: &str, body: &str, files: &[PathBuf]) -> Result<(), String> {
     use std::io::Write;
     use std::process::Stdio;
     let null = if cfg!(windows) { "NUL" } else { "/dev/null" };
-    let network = || "Couldn't reach the feedback server. Check your connection and try again.".to_owned();
+    let network = || crate::i18n::t("rs.feedback.couldn_t_reach_the_feedback_server");
     let mut args: Vec<String> = ["-sS", "--max-time", "60", "-X", "POST"].map(String::from).to_vec();
     if files.is_empty() {
         args.extend(["-H", "content-type: application/json", "--data-binary", "@-"].map(String::from));
@@ -156,11 +156,11 @@ fn post(url: &str, body: &str, files: &[PathBuf]) -> Result<(), String> {
     if !out.status.success() { return Err(network()); }
     match String::from_utf8_lossy(&out.stdout).trim() {
         "204" => Ok(()),
-        "429" => Err("Too many, try in a minute.".into()),
-        "503" => Err("Not taking feedback right now. Try again later.".into()),
-        "400" => Err("The server couldn't accept this feedback. Check the message and email.".into()),
-        "413" => Err("The feedback is too large. Shorten the message or remove a screenshot.".into()),
-        _ => Err("The feedback server returned an unexpected answer. Try again later.".into()),
+        "429" => Err(crate::i18n::t("rs.feedback.too_many_try_in_a").into()),
+        "503" => Err(crate::i18n::t("rs.feedback.not_taking_feedback_right_now").into()),
+        "400" => Err(crate::i18n::t("rs.feedback.the_server_couldn_t_accept_this").into()),
+        "413" => Err(crate::i18n::t("rs.feedback.the_feedback_is_too_large").into()),
+        _ => Err(crate::i18n::t("rs.feedback.the_feedback_server_returned_an").into()),
     }
 }
 

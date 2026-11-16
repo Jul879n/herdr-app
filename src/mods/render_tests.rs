@@ -189,6 +189,15 @@ fn module(values: BTreeMap<String, Value>, calls: Rc<RefCell<Calls>>) -> HostMod
             &json!({"available":true,"body":{"message":a.string(0)?,"email":a.string(1)?}}),
         ))
     });
+    module = module.function("tr", |a| {
+        let vars: Vec<(String, String)> = match a.value(1).map(from_host) {
+            Ok(Value::Object(o)) => o.into_iter().map(|(k, v)| (k, v.as_str().map(str::to_owned).unwrap_or_else(|| v.to_string()))).collect(),
+            _ => Vec::new(),
+        };
+        let refs: Vec<(&str, &str)> = vars.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        Ok(crate::i18n::tf(a.string(0)?, &refs).into())
+    });
+    module = module.function("locale", |_| Ok(crate::i18n::locale().into()));
     let shared = calls.clone();
     module = module.function("shared", move |a| {
         Ok(shared.borrow().shared.get(a.string(0)?).map(to_host).unwrap_or(HostValue::Null))
@@ -875,7 +884,7 @@ fn option_key_settings_are_only_shown_on_macos(cx: &mut TestAppContext) {
         for value in ["auto", "on", "off", "left", "right"] {
             assert_eq!(tree.contains(&format!("st-option-{value}")), platform == "macos", "{platform}: {tree}");
         }
-        assert_eq!(tree.contains("st-s-keyboard"), platform == "macos", "{platform}: {tree}");
+        assert!(tree.contains("st-s-keyboard"), "{platform}: {tree}");
     }
 }
 
@@ -884,7 +893,7 @@ fn settings_sections_and_updates(cx: &mut TestAppContext) {
     cx.update(gpui_shell::init);
     let start = Instant::now();
     let staged = Staged::new();
-    for section in ["look", "alerts", "privacy", "updates"] {
+    for section in ["look", "general", "agents", "keyboard", "alerts", "privacy", "updates"] {
         let mut p = props();
         p["section"] = json!(section);
         describe(cx, &staged, "frame/settings", true, p, updates("current", "current"), None).unwrap();

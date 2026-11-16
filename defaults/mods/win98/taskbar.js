@@ -5,10 +5,10 @@
 
 import { div, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { spaces, panes, agents, run, shared, setShared, nextCommand, exec, layouts, home, settings, openOverlay, closeOverlay } from "herdr";
+import { tr, spaces, panes, agents, run, shared, setShared, nextCommand, exec, layouts, home, settings, openOverlay, closeOverlay } from "herdr";
 import {
   C, ASSETS, unit, root, bevel, button, etch, grip, icon, programIcon, sfx, apps, setApp, label, own,
-  fitLayout, openMenu, openDialog, dither, perform,
+  fitLayout, openMenu, openDialog, dither, perform, statusEs,
 } from "./kit.js";
 
 // Agents the Start menu offers when installed: [command, name, icon].
@@ -26,7 +26,7 @@ const AGENTS = [
   ["crush", "Crush", "icons/crush.svg"],
 ];
 
-const GAMES = { mines: ["Mines", "mines"], sol: ["Solitaire", "sol"] };
+const GAMES = { mines: ["win98.mines", "mines"], sol: ["win98.solitaire", "sol"] };
 
 function lead(all, tab) {
   const mine = all.filter((p) => p.tab === tab);
@@ -42,7 +42,7 @@ function clock(d) {
 }
 
 function longDate(d) {
-  return d.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  return d.toLocaleDateString(tr("win98.locale"), { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 }
 
 /** Seconds since the Herdr app started (exec's parent), or null where ps can't say. */
@@ -60,7 +60,7 @@ async function appAge() {
 
 export function userName() {
   const h = home() ?? "";
-  const n = h.split(/[\\/]/).filter(Boolean).pop() ?? "User";
+  const n = h.split(/[\\/]/).filter(Boolean).pop() ?? tr("win98.user");
   return n.charAt(0).toUpperCase() + n.slice(1);
 }
 
@@ -130,14 +130,14 @@ export default class Taskbar {
       case "start":
         return this.toggleStart(this.startBounds ?? (this.screen ? { x: this.screen.x, y: this.screen.y } : null));
       case "new_tab":
-        return openDialog("prompt", { title: "New Tab", text: "Type a name for the new tab:", icon: "dos", command: { name: "tab.new", args: {} } });
+        return openDialog("prompt", { title: tr("win98.new_tab_2"), text: tr("win98.type_a_name_for_the_3"), icon: "dos", command: { name: "tab.new", args: {} } });
       case "new_space":
-        return openDialog("prompt", { title: "New Space", text: "Type a name for the new space:", icon: "folder", machines: true, command: { name: "space.new", args: {} } });
+        return openDialog("prompt", { title: tr("win98.new_space"), text: tr("win98.type_a_name_for_the_2"), icon: "folder", machines: true, command: { name: "space.new", args: {} } });
       case "rename_tab":
-        if (tab) openDialog("prompt", { title: "Rename", text: "Type a new name for this tab:", icon: "rename", value: tab.name, command: { name: "tab.rename", args: { id: tab.id } } });
+        if (tab) openDialog("prompt", { title: tr("win98.rename"), text: tr("win98.type_a_new_name_for_2"), icon: "rename", value: tab.name, command: { name: "tab.rename", args: { id: tab.id } } });
         return;
       case "rename_space":
-        if (s) openDialog("prompt", { title: "Rename", text: "Type a new name for this space:", icon: "folder", value: s.name, command: { name: "space.rename", args: { id: s.id } } });
+        if (s) openDialog("prompt", { title: tr("win98.rename"), text: tr("win98.type_a_new_name_for"), icon: "folder", value: s.name, command: { name: "space.rename", args: { id: s.id } } });
         return;
       case "close_tab":
         if (tab) openDialog("confirm", closeTabAsk(s, tab));
@@ -212,54 +212,54 @@ export default class Taskbar {
       act: { run: ["layout.switch", { name }] },
     }));
     return [
-      { label: "Herdr Update", icon: "update", act: { run: ["app.settings", { section: "updates" }] } },
+      { label: tr("win98.herdr_update"), icon: "update", act: { run: ["app.settings", { section: "updates" }] } },
       { sep: true },
       {
-        label: "&Programs",
+        label: tr("win98.programs"),
         icon: "programs",
         sub: [
           {
-            label: "Accessories",
+            label: tr("win98.accessories"),
             icon: "programs",
             sub: [
-              { label: "Games", icon: "programs", sub: [
-                { label: "Mines", icon: "mines", act: { app: "mines" } },
-                { label: "Solitaire", icon: "sol", act: { app: "sol" } },
+              { label: tr("win98.games"), icon: "programs", sub: [
+                { label: tr("win98.mines"), icon: "mines", act: { app: "mines" } },
+                { label: tr("win98.solitaire"), icon: "sol", act: { app: "sol" } },
               ] },
-              { label: "Office Assistant", icon: "clippy", act: { shared: ["win98.clippy", "on"] } },
-              { label: "Welcome to Herdr 98", icon: "start", act: { dialog: { kind: "welcome" } } },
-              { label: "Command Palette", icon: "find", act: { run: ["app.palette", {}] } },
+              { label: tr("win98.office_assistant"), icon: "clippy", act: { shared: ["win98.clippy", "on"] } },
+              { label: tr("win98.welcome_to_herdr_98"), icon: "start", act: { dialog: { kind: "welcome" } } },
+              { label: tr("win98.command_palette"), icon: "find", act: { run: ["app.palette", {}] } },
             ],
           },
-          { label: "Agents", icon: "programs", sub: agentItems.length ? agentItems : [{ label: "(Empty)", disabled: true }] },
-          { label: "DOS Prompt", icon: "dos", act: { run: ["tab.new", { name: "DOS Prompt" }] } },
-          { label: "New Space...", icon: "folder", act: { dialog: { kind: "prompt", title: "New Space", text: "Type a name for the new space:", icon: "folder", machines: true, command: { name: "space.new", args: {} } } } },
+          { label: tr("win98.agents"), icon: "programs", sub: agentItems.length ? agentItems : [{ label: tr("win98.empty"), disabled: true }] },
+          { label: tr("win98.dos_prompt"), icon: "dos", act: { run: ["tab.new", { name: tr("win98.dos_prompt") }] } },
+          { label: tr("win98.new_space_2"), icon: "folder", act: { dialog: { kind: "prompt", title: tr("win98.new_space"), text: tr("win98.type_a_name_for_the_2"), icon: "folder", machines: true, command: { name: "space.new", args: {} } } } },
         ],
       },
-      { label: "&Spaces", icon: "documents", sub: spaceItems.length ? spaceItems : [{ label: "(Empty)", disabled: true }] },
+      { label: tr("win98.spaces"), icon: "documents", sub: spaceItems.length ? spaceItems : [{ label: tr("win98.empty"), disabled: true }] },
       {
-        label: "S&ettings",
+        label: tr("win98.s_ettings"),
         icon: "settings",
         sub: [
-          { label: "&Control Panel", icon: "control", act: { run: ["app.settings", {}] } },
-          { label: "&Display...", icon: "display", act: { dialog: { kind: "display" } } },
-          { label: "&Layouts", icon: "programs", sub: layoutItems },
-          { label: "&Taskbar & Start Menu...", icon: "taskbar", act: { dialog: { kind: "display" } } },
+          { label: tr("win98.control_panel_2"), icon: "control", act: { run: ["app.settings", {}] } },
+          { label: tr("win98.display"), icon: "display", act: { dialog: { kind: "display" } } },
+          { label: tr("win98.layouts"), icon: "programs", sub: layoutItems },
+          { label: tr("win98.taskbar_start_menu"), icon: "taskbar", act: { dialog: { kind: "display" } } },
         ],
       },
       {
-        label: "&Find",
+        label: tr("win98.find"),
         icon: "find",
         sub: [
-          { label: "&Commands...", icon: "find", act: { run: ["app.palette", {}] } },
-          { label: "&Agents...", icon: "find", act: { dialog: { kind: "taskman" } } },
+          { label: tr("win98.commands"), icon: "find", act: { run: ["app.palette", {}] } },
+          { label: tr("win98.agents_2"), icon: "find", act: { dialog: { kind: "taskman" } } },
         ],
       },
-      { label: "&Help", icon: "help", act: { run: ["app.help", {}] } },
-      { label: "&Run...", icon: "run", act: { dialog: { kind: "run" } } },
+      { label: tr("win98.help_2"), icon: "help", act: { run: ["app.help", {}] } },
+      { label: tr("win98.run_2"), icon: "run", act: { dialog: { kind: "run" } } },
       { sep: true },
-      { label: `&Log Off ${userName()}...`, icon: "logoff", act: { dialog: { kind: "logoff" } } },
-      { label: "Sh&ut Down...", icon: "shutdown", act: { dialog: { kind: "shutdown" } } },
+      { label: tr("win98.log_off_user", { user: userName() }), icon: "logoff", act: { dialog: { kind: "logoff" } } },
+      { label: tr("win98.sh_ut_down_3"), icon: "shutdown", act: { dialog: { kind: "shutdown" } } },
     ];
   }
 
@@ -319,16 +319,16 @@ export default class Taskbar {
         toggled: pressed,
         pad: [0, 3],
         h: 22,
-        tooltip: `${t.name}${p?.program ? ` - ${p.program.name}` : ""}${t.status ? ` (${t.status})` : ""}`,
+        tooltip: `${t.name}${p?.program ? ` - ${p.program.name}` : ""}${t.status ? ` (${statusEs(t.status)})` : ""}`,
         onRight: () =>
           openMenu([
-            { label: "&Restore", act: { run: ["tab.select", { id: t.id }] }, disabled: pressed },
-            { label: "Mi&nimize", act: { run: ["tab.settle", { id: t.id }] }, disabled: t.settled },
-            { label: "Ma&ximize", act: { run: ["pane.zoom", {}] }, disabled: !t.active },
+            { label: tr("win98.restore"), act: { run: ["tab.select", { id: t.id }] }, disabled: pressed },
+            { label: tr("win98.mi_nimize"), act: { run: ["tab.settle", { id: t.id }] }, disabled: t.settled },
+            { label: tr("win98.ma_ximize"), act: { run: ["pane.zoom", {}] }, disabled: !t.active },
             { sep: true },
-            { label: "Re&name...", act: { dialog: { kind: "prompt", title: "Rename", text: "Type a new name for this tab:", icon: "rename", value: t.name, command: { name: "tab.rename", args: { id: t.id } } } } },
+            { label: tr("win98.re_name_2"), act: { dialog: { kind: "prompt", title: tr("win98.rename"), text: tr("win98.type_a_new_name_for_2"), icon: "rename", value: t.name, command: { name: "tab.rename", args: { id: t.id } } } } },
             { sep: true },
-            { label: "&Close", bold: true, shortcut: "Alt+F4", act: { run: ["tab.close", { id: t.id }] } },
+            { label: tr("win98.close_2"), bold: true, shortcut: "Alt+F4", act: { run: ["tab.close", { id: t.id }] } },
           ]),
       },
     )
@@ -338,7 +338,8 @@ export default class Taskbar {
   }
 
   gameButton(u, key, state) {
-    const [name, ico] = GAMES[key];
+    const [nameKey, ico] = GAMES[key];
+    const name = tr(nameKey);
     const open = state === "open";
     const face = h_flex()
       .relative()
@@ -356,10 +357,10 @@ export default class Taskbar {
       h: 22,
       onRight: () =>
         openMenu([
-          { label: "&Restore", act: { app: key }, disabled: open },
-          { label: "Mi&nimize", act: { shared: ["win98.apps", { ...apps(), [key]: "min" }] }, disabled: !open },
+          { label: tr("win98.restore"), act: { app: key }, disabled: open },
+          { label: tr("win98.mi_nimize"), act: { shared: ["win98.apps", { ...apps(), [key]: "min" }] }, disabled: !open },
           { sep: true },
-          { label: "&Close", bold: true, act: { shared: ["win98.apps", Object.fromEntries(Object.entries(apps()).filter(([k]) => k !== key))] } },
+          { label: tr("win98.close_2"), bold: true, act: { shared: ["win98.apps", Object.fromEntries(Object.entries(apps()).filter(([k]) => k !== key))] } },
         ]),
     })
       .flex_1()
@@ -407,7 +408,7 @@ export default class Taskbar {
           .id(`tray-${a.address}`)
           .relative()
           .flex_none()
-          .tooltip(`${a.program?.name ?? a.app ?? "Agent"}: ${a.status} - ${a.space_name} \\ ${a.tab_name}`)
+          .tooltip(`${a.program?.name ?? a.app ?? tr("win98.agent")}: ${statusEs(a.status)} - ${a.space_name} \\ ${a.tab_name}`)
           .on_click(() => run("agent.focus", { terminal: a.address }))
           .child(programIcon(u, a.program, 16))
           .when(Boolean(badge), (el) =>
@@ -429,7 +430,7 @@ export default class Taskbar {
       .px(u(2))
       .children(icons)
       .child(
-        own(div().id("tray-speaker").flex_none().tooltip(mute ? "Sounds: off" : "Volume").on_click((_e, cx) => {
+        own(div().id("tray-speaker").flex_none().tooltip(mute ? tr("win98.sounds_off") : tr("win98.volume")).on_click((_e, cx) => {
           setShared("win98.mute", !mute);
           cx.notify();
         })).child(icon(u, mute ? "speaker-mute" : "speaker", 16)),
@@ -464,7 +465,7 @@ export default class Taskbar {
     const start = button(
       u,
       "start",
-      h_flex().gap(u(3)).items_center().child(icon(u, "start", 16)).child(label("Start", { bold: true })),
+      h_flex().gap(u(3)).items_center().child(icon(u, "start", 16)).child(label(tr("win98.start"), { bold: true })),
       null,
       {
         toggled: startOpen,
@@ -478,11 +479,11 @@ export default class Taskbar {
     ).flex_none();
 
     const ql = [
-      this.quick(u, "dos", "dos", "DOS Prompt", { run: ["tab.new", { name: "DOS Prompt" }] }),
+      this.quick(u, "dos", "dos", tr("win98.dos_prompt"), { run: ["tab.new", { name: tr("win98.dos_prompt") }] }),
       ...AGENTS.filter((a) => this.installed.includes(a[0]))
         .slice(0, 2)
         .map(([cmd, name, ico]) => this.quick(u, cmd, programIcon(u, { icon: ico, tint: false }, 16), name, { run: ["tab.new", { name, argv: [cmd] }] })),
-      this.quick(u, "mines", "mines", "Mines", { app: "mines" }),
+      this.quick(u, "mines", "mines", tr("win98.mines"), { app: "mines" }),
     ];
 
     return root(
@@ -518,11 +519,11 @@ export default class Taskbar {
 
 export function closeTabAsk(s, tab) {
   return {
-    title: "Close Tab",
+    title: tr("win98.close_tab"),
     icon: "warning",
-    text: `Are you sure you want to close '${tab.name}'?\nIts programs will be ended.`,
+    text: tr("win98.are_you_sure_you_want_2", { name: tab.name }),
     buttons: [
-      { label: "&Yes", default: true, act: { run: ["tab.close", { id: tab.id }] } },
+      { label: tr("win98.yes"), default: true, act: { run: ["tab.close", { id: tab.id }] } },
       { label: "&No" },
     ],
   };
@@ -530,11 +531,11 @@ export function closeTabAsk(s, tab) {
 
 export function closeSpaceAsk(s) {
   return {
-    title: "Confirm Folder Delete",
+    title: tr("win98.confirm_folder_delete"),
     icon: "warning",
-    text: `Are you sure you want to close the space '${s.name}' and all its tabs?\nEvery program in it will be ended.`,
+    text: tr("win98.are_you_sure_you_want_3", { name: s.name }),
     buttons: [
-      { label: "&Yes", default: true, act: { run: ["space.close", { id: s.id, confirmed: true }] } },
+      { label: tr("win98.yes"), default: true, act: { run: ["space.close", { id: s.id, confirmed: true }] } },
       { label: "&No" },
     ],
   };

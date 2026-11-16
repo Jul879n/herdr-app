@@ -685,7 +685,7 @@ impl TerminalView {
                 let bytes = self.grid.borrow().vt.paste_bytes(&text);
                 self.send(&bytes);
             }
-            Err(body) => drag_paths::unavailable(body),
+            Err(body) => drag_paths::unavailable(&body),
         }
     }
 
@@ -699,7 +699,7 @@ impl TerminalView {
                     self.dropped(paths.paths.iter().map(PathBuf::from).collect(), cx);
                 }
             }
-            Err(body) => drag_paths::unavailable(body),
+            Err(body) => drag_paths::unavailable(&body),
         }
     }
 
@@ -718,7 +718,7 @@ impl TerminalView {
     /// paths there; `copies`: the local files were only for sending.
     fn put_there(&self, paths: Vec<std::path::PathBuf>, copies: bool, cx: &mut Context<Self>) {
         if let Err(body) = drag_paths::validate_upload(&paths) {
-            return drag_paths::unavailable(body);
+            return drag_paths::unavailable(&body);
         }
         let addr = self.address.clone();
         cx.spawn(async move |this, cx| {
@@ -727,9 +727,9 @@ impl TerminalView {
                 .spawn(async move {
                     let (mut there, mut refused) = (Vec::new(), Vec::new());
                     for p in &paths {
-                        let name = || if copies { "the pasted image".to_owned() } else { p.file_name().unwrap_or(p.as_os_str()).to_string_lossy().into_owned() };
+                        let name = || if copies { crate::i18n::t("rs.terminal.the_pasted_image") } else { p.file_name().unwrap_or(p.as_os_str()).to_string_lossy().into_owned() };
                         if let Some(why) = drag_paths::upload_refusal(p) {
-                            refused.push((name(), why.to_owned()));
+                            refused.push((name(), why));
                             continue;
                         }
                         let out = crate::spawn::command(crate::core_bin::path()).args(["put", "--json", &addr]).arg(p).output();
@@ -1395,17 +1395,17 @@ fn put_answer(stdout: &[u8], stderr: &[u8]) -> Result<String, String> {
         return Err(why.to_owned());
     }
     let text = String::from_utf8_lossy(stderr).trim().to_owned();
-    Err(if text.is_empty() { "hc put gave no path".to_owned() } else { text })
+    Err(if text.is_empty() { crate::i18n::t("rs.terminal.hc_put_gave_no_path") } else { text })
 }
 
 fn refusal_notice(refused: &[(String, String)]) -> Option<(String, String)> {
     match refused {
         [] => None,
-        [(name, why)] => Some((format!("Couldn't send {name}"), why.clone())),
+        [(name, why)] => Some((crate::i18n::tf("rs.terminal.couldn_t_send_name", &[("name", name)]), why.clone())),
         many => {
             let mut why: Vec<&str> = many.iter().map(|(_, w)| w.as_str()).collect();
             why.dedup();
-            Some((format!("Couldn't send {} files", many.len()), why.join("; ")))
+            Some((crate::i18n::tf("rs.terminal.couldn_t_send_n_files", &[("n", &many.len().to_string())]), why.join("; ")))
         }
     }
 }
